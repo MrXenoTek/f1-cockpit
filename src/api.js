@@ -52,3 +52,22 @@ export function classifyErs(cur, prev, is26) {
   }
   return "neutral";
 }
+export const exportCSV = (data, filename) => {
+  if (!data || !data.length) return;
+  const headers = Object.keys(data[0]).join(",");
+  const csv = [headers, ...data.map(row => Object.values(row).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}.csv`;
+  link.click();
+};
+
+export const exportJSON = (data, filename) => {
+  if (!data || !data.length) return;
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filename}.json`;
+  link.click();
+};

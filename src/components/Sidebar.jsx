@@ -31,9 +31,11 @@ function DrvCard({d, pos, sel, isCmp, onClick, onCompare, lap, intv, raceData}) 
   </div>;
 }
 
-export default function Sidebar({ curLap, sortedDrv, posAtLap, selDrv, cmpDrv, setSelDrv, setCmpDrv, curLapD, curIntv, drvRaceData }) {
-  return <div style={{gridArea: "sidebar", borderRight:"1px solid #131313",overflow:"auto",background:"#0c0c0c"}}>
-    <div style={{padding:"7px 8px",fontSize:8,color:"#333",textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #131313",fontWeight:600}}>Classement • Tour {curLap}</div>
+export default function Sidebar({ curLap, sortedDrv, posAtLap, selDrv, cmpDrv, setSelDrv, setCmpDrv, curLapD, curIntv, drvRaceData, t }) {
+  return <>
+    <div style={{padding:"7px 8px",fontSize:8,color:"#333",textTransform:"uppercase",letterSpacing:1,borderBottom:"1px solid #131313",fontWeight:600}}>
+      {t("ranking")} • {t("lap")} {curLap}
+    </div>
     {sortedDrv.map((d,i) => <DrvCard key={d.driver_number} d={d} pos={posAtLap[d.driver_number]||i+1} sel={selDrv===d.driver_number} isCmp={cmpDrv===d.driver_number} onClick={()=>setSelDrv(d.driver_number)} onCompare={()=>setCmpDrv(p=>p===d.driver_number?null:d.driver_number)} lap={curLapD.get(d.driver_number)} intv={curIntv.get(d.driver_number)} raceData={drvRaceData[d.driver_number]}/>)}
-  </div>;
+  </>;
 }
