@@ -24,6 +24,8 @@ const DICT = {
   },
 };
 
+let toastIdCounter = 0;
+
 export default function App() {
   const [meetings, setMeetings] = useState([]);
   const [selMeet, setSelMeet] = useState(null);
@@ -62,6 +64,9 @@ export default function App() {
   const [lang, setLang] = useState("fr");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [mapMetric, setMapMetric] = useState("speed");
+  const [toasts, setToasts] = useState([]);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const prevRCtrlLen = useRef(0);
   const t = (k) => DICT[lang][k] || k;
 
   const playRef = useRef(null);
@@ -73,13 +78,52 @@ export default function App() {
   const is26 = year >= 2026;
   const log = useCallback((m) => setLogs((p) => [...p.slice(-60), { t: new Date().toLocaleTimeString("fr-FR"), m }]), []);
 
+  // Inject CSS keyframes once
+  useEffect(() => {
+    const styleId = "f1-cockpit-keyframes";
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      @keyframes slideInRight {
+        from { transform: translateX(110%); opacity: 0; }
+        to   { transform: translateX(0);    opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
+  const addToast = useCallback((msg, type = "info") => {
+    const id = ++toastIdCounter;
+    setToasts((prev) => [...prev.slice(-3), { id, msg, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((to) => to.id !== id)), 5000);
+  }, []);
+
+  // Detect new rCtrl messages when live
+  useEffect(() => {
+    if (!isLive || !rCtrl.length) {
+      prevRCtrlLen.current = rCtrl.length;
+      return;
+    }
+    const newMsgs = rCtrl.slice(prevRCtrlLen.current);
+    prevRCtrlLen.current = rCtrl.length;
+    newMsgs.forEach((m) => {
+      const msg = m.message || "";
+      if (msg.includes("SAFETY CAR")) addToast("🚗 " + msg, "warning");
+      else if (msg.includes("VSC") || msg.includes("VIRTUAL SAFETY CAR")) addToast("🟡 " + msg, "warning");
+      else if (msg.includes("RED FLAG") || m.flag === "RED") addToast("🚨 " + msg, "danger");
+    });
+  }, [rCtrl, isLive, addToast]);
+
   useEffect(() => { curLapRef.current = curLap; }, [curLap]);
   useEffect(() => { maxLapRef.current = maxLap; }, [maxLap]);
 
-  // Keyboard shortcuts & responsive
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+      if (e.key === "?") { e.preventDefault(); setShowShortcuts((p) => !p); return; }
+      if (e.code === "Escape") { setShowShortcuts(false); return; }
       if (e.code === "Space") { e.preventDefault(); setPlay((p) => !p); }
       if (e.code === "ArrowLeft") { e.preventDefault(); setCurLap((l) => Math.max(1, l - 1)); }
       if (e.code === "ArrowRight") { e.preventDefault(); setCurLap((l) => Math.min(maxLap, l + 1)); }
@@ -90,7 +134,6 @@ export default function App() {
     return () => { window.removeEventListener("keydown", handleKeyDown); window.removeEventListener("resize", handleResize); };
   }, [maxLap]);
 
-  // Load meetings + standings when year changes
   useEffect(() => {
     setApiOk("..."); setMeetings([]); setStandings([]);
     fetchApi("meetings", { year }, log).then((d) => {
@@ -101,14 +144,12 @@ export default function App() {
     fetchStandings(year).then((d) => setStandings(d));
   }, [year, log]);
 
-  // Load sessions when meeting changes
   useEffect(() => {
     if (!selMeet) return;
     setSessions([]); setSelSess(null);
     fetchApi("sessions", { meeting_key: selMeet.meeting_key }, log).then((d) => Array.isArray(d) && setSessions(d));
   }, [selMeet, log]);
 
-  // Load all session data
   const loadSessionAggregateData = useCallback(async (isInitial = false) => {
     if (!selSess) return;
     const sk = selSess.session_key;
@@ -119,13 +160,13 @@ export default function App() {
       setStints([]); setPits([]); setPosSnaps([]); setIntervals([]); setErsSegs([]);
       setRadios([]); setRCtrl([]); setWeather([]);
       setSelDrv(null); setCmpDrv(null); setCurLap(1); setTelStatus("idle"); setHoveredIndex(null);
+      prevRCtrlLen.current = 0;
     }
     try {
       if (isInitial && selMeet?.circuit_info_url) {
         const c = await fetchJ(selMeet.circuit_info_url, isInitial ? log : null);
         if (c?.x?.length > 10) { setTrackX(c.x); setTrackY(c.y); setCorners(c.corners || []); }
       }
-      // Sequential fetch to avoid hammering the API with 9 simultaneous requests
       const drv = await fetchApi("drivers",     { session_key: sk }, isInitial ? log : null);
       const ld  = await fetchApi("laps",         { session_key: sk }, isInitial ? log : null);
       const pos = await fetchApi("position",     { session_key: sk }, isInitial ? log : null);
@@ -166,14 +207,12 @@ export default function App() {
 
   useEffect(() => { if (selSess) loadSessionAggregateData(true); }, [selSess, loadSessionAggregateData]);
 
-  // Live refresh
   useEffect(() => {
     if (!isLive || !sessionReady) return;
     const interval = setInterval(() => loadSessionAggregateData(false), 15000);
     return () => clearInterval(interval);
   }, [isLive, sessionReady, loadSessionAggregateData]);
 
-  // Fetch car telemetry data for selected lap
   useEffect(() => {
     if (!sessionReady || !laps.length) return;
     const fetchDriverData = async (drv, setter) => {
@@ -211,18 +250,13 @@ export default function App() {
       .catch(() => setTelStatus("error"));
   }, [sessionReady, selDrv, cmpDrv, curLap, laps, selSess, isLive, maxLap]);
 
-  // ── Derived data ────────────────────────────────────────────────────────────
-  // Derive positions per lap from laps data (more reliable than posSnaps)
   const posAtLap = useMemo(() => {
     if (!laps.length) return {};
-
-    // Primary: sort by date_start of lap curLap+1 = when drivers crossed the line on lap curLap
     const finishTimes = {};
     laps.forEach((l) => {
       if (l.lap_number === curLap + 1 && l.date_start)
         finishTimes[l.driver_number] = new Date(l.date_start).getTime();
     });
-
     if (Object.keys(finishTimes).length >= 3) {
       const sorted = Object.entries(finishTimes).sort((a, b) => a[1] - b[1]);
       const pos = {};
@@ -231,8 +265,6 @@ export default function App() {
       drivers.forEach((d) => { if (!pos[d.driver_number]) pos[d.driver_number] = nextPos++; });
       return pos;
     }
-
-    // Fallback: sort by date_start of lap curLap itself
     const startTimes = {};
     laps.forEach((l) => {
       if (l.lap_number === curLap && l.date_start)
@@ -246,8 +278,6 @@ export default function App() {
       drivers.forEach((d) => { if (!pos[d.driver_number]) pos[d.driver_number] = nextPos++; });
       return pos;
     }
-
-    // Last resort: posSnaps
     if (!posSnaps.length) return {};
     const lapEntries = laps.filter((l) => l.lap_number === curLap && l.date_start);
     if (!lapEntries.length) return posSnaps[posSnaps.length - 1]?.state || {};
@@ -282,20 +312,17 @@ export default function App() {
     if (!trackX.length || !drivers.length) return [];
     const total = drivers.length;
     return drivers.map((d, i) => {
-      // Use index+1 as fallback so drivers are spread out even without position data
       const pos = posAtLap[d.driver_number] || (i + 1);
       return { progress: (1 - ((pos - 1) / total) * 0.6) % 1, color: tc(d.team_name), acr: d.name_acronym, dn: d.driver_number };
     });
   }, [trackX, drivers, posAtLap]);
 
-  // ERS segments
   useEffect(() => {
     if (currentCarData.length < 20) { setErsSegs([]); return; }
     const step = Math.max(1, Math.floor(currentCarData.length / 300));
     setErsSegs(currentCarData.filter((_, i) => i % step === 0).map((p, i, arr) => ({ ...p, type: classifyErs(p, arr[i - 1], is26) })));
   }, [currentCarData, is26]);
 
-  // Play/pause lap slider
   useEffect(() => {
     if (play) playRef.current = setInterval(() => setCurLap((l) => { if (l >= maxLap) { setPlay(false); return l; } return l + 1; }), 1500);
     return () => clearInterval(playRef.current);
@@ -352,6 +379,59 @@ export default function App() {
     return scMsg ? scMsg.message : null;
   }, [curLap, selDrv, laps, rCtrl]);
 
+  // Overtakes per lap: count drivers who gained position vs previous lap
+  const overtakesPerLap = useMemo(() => {
+    if (!laps.length || !drivers.length) return [];
+    const result = [];
+    const getPosFromStartTimes = (ln) => {
+      const startTimes = {};
+      laps.forEach((l) => {
+        if (l.lap_number === ln && l.date_start)
+          startTimes[l.driver_number] = new Date(l.date_start).getTime();
+      });
+      if (Object.keys(startTimes).length < 3) return null;
+      const sorted = Object.entries(startTimes).sort((a, b) => a[1] - b[1]);
+      const pos = {};
+      sorted.forEach(([dn], i) => { pos[parseInt(dn)] = i + 1; });
+      return pos;
+    };
+    for (let lapNum = 2; lapNum <= maxLap; lapNum++) {
+      const prevPos = getPosFromStartTimes(lapNum - 1);
+      const curPos = getPosFromStartTimes(lapNum);
+      if (!prevPos || !curPos) { result.push({ lap: lapNum, count: 0 }); continue; }
+      let count = 0;
+      drivers.forEach((d) => {
+        const dn = d.driver_number;
+        if (prevPos[dn] && curPos[dn] && curPos[dn] < prevPos[dn]) count++;
+      });
+      result.push({ lap: lapNum, count });
+    }
+    return result;
+  }, [laps, drivers, maxLap]);
+
+  // Gap to leader for selDrv (and cmpDrv) per lap
+  const gapData = useMemo(() => {
+    if (!laps.length || !selDrv) return [];
+    const result = [];
+    for (let lapNum = 1; lapNum < maxLap; lapNum++) {
+      const nextLapStarts = {};
+      laps.forEach((l) => {
+        if (l.lap_number === lapNum + 1 && l.date_start)
+          nextLapStarts[l.driver_number] = new Date(l.date_start).getTime();
+      });
+      if (Object.keys(nextLapStarts).length < 3) continue;
+      const sorted = Object.entries(nextLapStarts).sort((a, b) => a[1] - b[1]);
+      const leaderTime = sorted[0][1];
+      const selTime = nextLapStarts[selDrv];
+      const cmpTime = cmpDrv ? nextLapStarts[cmpDrv] : undefined;
+      const pt = { lap: lapNum };
+      if (selTime != null) pt.gap1 = parseFloat(((selTime - leaderTime) / 1000).toFixed(3));
+      if (cmpTime != null) pt.gap2 = parseFloat(((cmpTime - leaderTime) / 1000).toFixed(3));
+      if (pt.gap1 != null || pt.gap2 != null) result.push(pt);
+    }
+    return result;
+  }, [laps, selDrv, cmpDrv, maxLap]);
+
   const getErsVal = (cur, prev) => {
     const tp = classifyErs(cur, prev, is26);
     if (tp === "harvest" || tp === "superclip") return 100;
@@ -389,7 +469,6 @@ export default function App() {
   let c2 = cmpDrvObj ? tc(cmpDrvObj.team_name) : "#FF8C00";
   if (c1 === c2) c2 = "#ffffff";
 
-  // Prevent same-driver VS selection
   const handleDriverSelect = (dn) => { setSelDrv(dn); if (cmpDrv === dn) setCmpDrv(null); };
 
   const selLapData = laps.find((l) => l.driver_number === selDrv && l.lap_number === curLap) || {};
@@ -397,16 +476,44 @@ export default function App() {
   const s1Ratio = selLapData.lap_duration ? selLapData.duration_sector_1 / selLapData.lap_duration : 0.33;
   const s2Ratio = selLapData.lap_duration ? (selLapData.duration_sector_1 + selLapData.duration_sector_2) / selLapData.lap_duration : 0.66;
 
+  const copyLink = useCallback(() => {
+    const params = new URLSearchParams();
+    if (year) params.set("y", year);
+    if (selMeet?.meeting_key) params.set("m", selMeet.meeting_key);
+    if (selSess?.session_key) params.set("s", selSess.session_key);
+    if (selDrv) params.set("d", selDrv);
+    if (curLap > 1) params.set("l", curLap);
+    const url = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
+    navigator.clipboard.writeText(url).then(
+      () => addToast("🔗 Link copied!", "success"),
+      () => addToast("Failed to copy", "danger")
+    );
+  }, [year, selMeet, selSess, selDrv, curLap, addToast]);
+
+  const curLapOvertakes = useMemo(() => {
+    const entry = overtakesPerLap.find((o) => o.lap === curLap);
+    return entry?.count || 0;
+  }, [overtakesPerLap, curLap]);
+
   const ss = { background: "#141414", color: "#aaa", border: "1px solid #1e1e1e", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "var(--f)", outline: "none" };
 
   const gridStyle = isMobile
     ? { display: "flex", flexDirection: "column", height: "auto", minHeight: "100vh" }
     : { display: "grid", gridTemplateColumns: "220px 1fr 340px", gridTemplateRows: "44px 1fr", gridTemplateAreas: `"header header header" "sidebar main rightpanel"`, height: "100vh", overflow: "hidden" };
 
+  const TOAST_BG = { info: "#1a2a3a", warning: "#2a1e00", danger: "#2a0808", success: "#082a08" };
+  const TOAST_BD = { info: "#3671C6", warning: "#FFD600", danger: "#E8002D", success: "#00D26A" };
+
+  const SHORTCUTS = [
+    { key: "Space", desc: lang === "fr" ? "Lecture / Pause" : "Play / Pause" },
+    { key: "←", desc: lang === "fr" ? "Tour précédent" : "Previous lap" },
+    { key: "→", desc: lang === "fr" ? "Tour suivant" : "Next lap" },
+    { key: "?", desc: lang === "fr" ? "Raccourcis clavier" : "Keyboard shortcuts" },
+    { key: "Esc", desc: lang === "fr" ? "Fermer les overlays" : "Close overlays" },
+  ];
+
   return (
     <div style={{ "--f": "'JetBrains Mono','SF Mono','Fira Code',monospace", background: "#0a0a0a", color: "#eee", fontFamily: "var(--f)", ...gridStyle }}>
-
-      {/* ── HEADER ── */}
       <header style={{ gridArea: "header", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #181818", background: "#0d0d0d", flexWrap: "wrap", zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div style={{ width: 3, height: 22, background: "#E8002D", borderRadius: 2 }} />
@@ -432,15 +539,15 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 3, background: apiOk === "OK" ? "#0a200a" : "#200a0a" }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: apiOk === "OK" ? "#0a0" : apiOk === "ERR" ? "#a00" : "#aa0", animation: apiOk === "..." ? "pulse 1s infinite" : "none" }} />
           </div>
+          <button onClick={copyLink} title={lang === "fr" ? "Copier le lien" : "Copy link"} style={{ background: "#1a1a1a", border: "1px solid #333", color: "#888", padding: "4px 7px", borderRadius: 4, fontSize: 10, cursor: "pointer" }}>🔗</button>
+          <button onClick={() => setShowShortcuts((p) => !p)} title={lang === "fr" ? "Raccourcis clavier" : "Keyboard shortcuts"} style={{ background: showShortcuts ? "#1a1a2a" : "#1a1a1a", border: `1px solid ${showShortcuts ? "#3671C6" : "#333"}`, color: showShortcuts ? "#3671C6" : "#888", padding: "4px 7px", borderRadius: 4, fontSize: 10, cursor: "pointer", fontWeight: 700 }}>?</button>
         </div>
       </header>
 
-      {/* ── SIDEBAR ── */}
       <div style={{ gridArea: "sidebar", borderRight: isMobile ? "none" : "1px solid #131313", borderBottom: isMobile ? "1px solid #181818" : "none", maxHeight: isMobile ? "220px" : "auto", overflow: "auto", background: "#0c0c0c" }}>
         <Sidebar curLap={curLap} sortedDrv={sortedDrv} posAtLap={posAtLap} selDrv={selDrv} cmpDrv={cmpDrv} setSelDrv={handleDriverSelect} setCmpDrv={setCmpDrv} curLapD={curLapD} curIntv={curIntv} drvRaceData={drvRaceData} t={t} />
       </div>
 
-      {/* ── MAIN (TrackMap + Telemetry) ── */}
       <div style={{ gridArea: "main", display: "grid", gridTemplateRows: isMobile ? "auto 360px" : "1fr 400px", overflow: "hidden", minHeight: 0 }}>
         <div style={{ position: "relative", background: "#0e0e0e", minHeight: 0, overflow: "hidden" }}>
           <TrackMap
@@ -451,13 +558,17 @@ export default function App() {
             s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t}
             mapMetric={mapMetric} setMapMetric={setMapMetric}
           />
-          {/* Lap slider */}
           <div style={{ position: "absolute", bottom: 8, left: 12, right: 12, display: "flex", gap: 6 }}>
             {maxLap > 1 && (
               <div style={{ flex: 1, background: "#0e0e0ecc", backdropFilter: "blur(6px)", borderRadius: 6, padding: "5px 10px", display: "flex", alignItems: "center", gap: 6, border: "1px solid #1c1c1c" }}>
                 <button onClick={() => setPlay(!play)} style={{ background: play ? "#E8002D" : "#1c1c1c", color: "#fff", border: "none", borderRadius: 3, width: 26, height: 22, cursor: "pointer", fontSize: 10 }}>{play ? "⏸" : "▶"}</button>
                 <input type="range" min={1} max={maxLap} value={curLap} onChange={(e) => { setCurLap(+e.target.value); setPlay(false); }} style={{ flex: 1, accentColor: "#E8002D" }} />
                 <span style={{ fontSize: 9, color: "#555", minWidth: 44, textAlign: "right" }}>{curLap}/{maxLap}</span>
+                {curLapOvertakes > 0 && (
+                  <div title={`${curLapOvertakes} overtake${curLapOvertakes !== 1 ? "s" : ""}`} style={{ background: "#E8002D", color: "#fff", borderRadius: 10, padding: "1px 6px", fontSize: 8, fontWeight: 700, minWidth: 18, textAlign: "center" }}>
+                    +{curLapOvertakes}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -472,7 +583,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
       <div style={{ gridArea: "rightpanel", borderLeft: isMobile ? "none" : "1px solid #131313", height: isMobile ? "auto" : "100%", overflow: "hidden" }}>
         <RightPanel
           tab={tab} setTab={setTab} filtRadios={filtRadios} rCtrl={rCtrl}
@@ -480,8 +590,46 @@ export default function App() {
           rfDrv={rfDrv} setRfDrv={setRfDrv} rfLap={rfLap} setRfLap={setRfLap}
           ss={ss} t={t} lang={lang} pits={pits} stints={stints} selDrv={selDrv} cmpDrv={cmpDrv}
           laps={laps} bestSectors={bestSectors} standings={standings} curLap={curLap}
+          gapData={gapData} overtakesPerLap={overtakesPerLap}
         />
       </div>
+
+      {/* Toast notification overlay */}
+      <div style={{ position: "fixed", top: 56, right: 12, zIndex: 9999, display: "flex", flexDirection: "column", gap: 6, pointerEvents: "none" }}>
+        {toasts.map((toast) => (
+          <div key={toast.id} style={{
+            background: TOAST_BG[toast.type] || "#1a1a1a",
+            border: `1px solid ${TOAST_BD[toast.type] || "#444"}`,
+            color: "#eee", borderRadius: 5, padding: "7px 12px", fontSize: 10,
+            fontFamily: "var(--f)", fontWeight: 600, maxWidth: 270, lineHeight: 1.5,
+            animation: "slideInRight 0.3s ease",
+            boxShadow: `0 3px 14px ${TOAST_BD[toast.type] || "#000"}33`,
+            pointerEvents: "auto",
+          }}>
+            {toast.msg}
+          </div>
+        ))}
+      </div>
+
+      {/* Keyboard shortcuts modal */}
+      {showShortcuts && (
+        <div onClick={() => setShowShortcuts(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "#000000bb", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#111", border: "1px solid #222", borderRadius: 8, padding: "20px 24px", minWidth: 280, maxWidth: 360 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#ccc", letterSpacing: 1 }}>
+                {lang === "fr" ? "RACCOURCIS CLAVIER" : "KEYBOARD SHORTCUTS"}
+              </span>
+              <button onClick={() => setShowShortcuts(false)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>✕</button>
+            </div>
+            {SHORTCUTS.map((sc) => (
+              <div key={sc.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #1a1a1a" }}>
+                <span style={{ fontSize: 9, color: "#888" }}>{sc.desc}</span>
+                <kbd style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 3, padding: "2px 8px", fontSize: 9, color: "#ccc", fontFamily: "var(--f)" }}>{sc.key}</kbd>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
