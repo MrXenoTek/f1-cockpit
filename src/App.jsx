@@ -61,6 +61,7 @@ export default function App() {
   const [sessionReady, setSessionReady] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [hoveredIndex, setHoveredIndex] = useState(null);
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
   const [lang, setLang] = useState("fr");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [mapMetric, setMapMetric] = useState("speed");
@@ -579,7 +580,7 @@ export default function App() {
       </div>
 
       <div style={{ gridArea: "main", display: "grid", gridTemplateRows: isMobile ? "auto 360px" : "1fr 400px", overflow: "hidden", minHeight: 0 }}>
-        <div style={{ position: "relative", background: "#0e0e0e", minHeight: 0, overflow: "hidden" }}>
+        <div style={{ position: "relative", background: "#0e0e0e", minHeight: 0, overflow: "hidden" }} onDoubleClick={() => setIsMapFullscreen(true)}>
           <TrackMap
             trackX={trackX} trackY={trackY} corners={corners} ersSegs={ersSegs}
             currentLap={curLap} driverDots={driverDots} selDrv={selDrv} cmpDrv={cmpDrv}
@@ -624,6 +625,26 @@ export default function App() {
           gapData={gapData} overtakesPerLap={overtakesPerLap} cornerSpeeds={cornerSpeeds}
         />
       </div>
+
+      {/* Full-screen track map overlay */}
+      {isMapFullscreen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9990, background: "#0a0a0a", display: "flex", flexDirection: "column" }} onDoubleClick={() => setIsMapFullscreen(false)}>
+          <div style={{ position: "absolute", inset: 0 }}>
+            <TrackMap
+              trackX={trackX} trackY={trackY} corners={corners} ersSegs={ersSegs}
+              currentLap={curLap} driverDots={driverDots} selDrv={selDrv} cmpDrv={cmpDrv}
+              onSelect={handleDriverSelect} telChart={telChart} c1={c1} c2={c2}
+              selDrvObj={selDrvObj} cmpDrvObj={cmpDrvObj} hoveredIndex={hoveredIndex}
+              s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t}
+              mapMetric={mapMetric} setMapMetric={setMapMetric}
+              currentCarData={currentCarData}
+            />
+          </div>
+          <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", color: "#444", fontSize: 9, fontFamily: "var(--f)", background: "#0a0a0acc", padding: "4px 10px", borderRadius: 4, border: "1px solid #1c1c1c", pointerEvents: "none" }}>
+            {lang === "fr" ? "Double-clic pour quitter" : "Double-click to exit fullscreen"}
+          </div>
+        </div>
+      )}
 
       {/* Toast notification overlay */}
       <div style={{ position: "fixed", top: 56, right: 12, zIndex: 9999, display: "flex", flexDirection: "column", gap: 6, pointerEvents: "none" }}>
