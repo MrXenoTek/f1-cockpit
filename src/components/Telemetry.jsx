@@ -202,6 +202,7 @@ export default function Telemetry({
           <TelChart data={telChart} dk1="brake1" dk2={cmpDrv ? "brake2" : null} c1={c1} c2={c2} label={t("brake")} unit="%" domain={[0, 100]} onHover={handleHover} onLeave={handleLeave} s1Limit={s1Limit} s2Limit={s2Limit} />
           <TelChart data={telChart} dk1="gear1" dk2={cmpDrv ? "gear2" : null} c1={c1} c2={c2} label={t("gear")} domain={[0, 9]} onHover={handleHover} onLeave={handleLeave} s1Limit={s1Limit} s2Limit={s2Limit} />
           <TelChart data={telChart} dk1="ers1" dk2={cmpDrv ? "ers2" : null} c1={c1} c2={c2} label={(t("ers") || "ERS") + " (↑récolte ↓déploiement)"} unit="%" domain={[-100, 100]} onHover={handleHover} onLeave={handleLeave} s1Limit={s1Limit} s2Limit={s2Limit} hasBrush />
+          <TelChart data={telChart} dk1="gLong1" dk2={cmpDrv ? "gLong2" : null} c1={c1} c2={c2} label="G-Force (Long.)" unit="G" domain={[-4, 4]} onHover={handleHover} onLeave={handleLeave} s1Limit={s1Limit} s2Limit={s2Limit} />
         </div>
       )}
     </div>

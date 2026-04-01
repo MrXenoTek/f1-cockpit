@@ -9,7 +9,7 @@ export default function RightPanel({
   tab, setTab, filtRadios, rCtrl, weather, curWeather,
   drivers, maxLap, rfDrv, setRfDrv, rfLap, setRfLap, ss, t, lang,
   pits, stints, selDrv, cmpDrv, laps, bestSectors, standings, curLap,
-  gapData, overtakesPerLap,
+  gapData, overtakesPerLap, cornerSpeeds = [],
 }) {
   const [bestLapNavSector, setBestLapNavSector] = useState("s1");
 
@@ -671,6 +671,30 @@ export default function RightPanel({
                 </div>
               )}
             </div>
+
+            {/* Corner apex speeds */}
+            {cornerSpeeds.length > 0 && (
+              <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 4 }}>
+                  {lang === "fr" ? "VITESSE APEX PAR VIRAGE" : "CORNER APEX SPEEDS"}
+                </div>
+                <div style={{ height: 110 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={cornerSpeeds} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="15%" barGap={1}>
+                      <XAxis dataKey="number" tick={{ fill: "#555", fontSize: 7, fontFamily: "var(--f)" }} axisLine={false} tickLine={false} />
+                      <YAxis domain={["auto", "auto"]} hide />
+                      <Tooltip
+                        contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 9, fontFamily: "var(--f)", padding: "3px 7px" }}
+                        formatter={(v, name) => [`${v} km/h`, name]}
+                        labelFormatter={(l) => `${lang === "fr" ? "Virage" : "Corner"} ${l}`}
+                      />
+                      <Bar dataKey="speed1" name={selDrvObj?.name_acronym || "P1"} fill={c1} radius={[2, 2, 0, 0]} maxBarSize={14} />
+                      {cmpDrv && <Bar dataKey="speed2" name={cmpDrvObj?.name_acronym || "P2"} fill={c2} radius={[2, 2, 0, 0]} maxBarSize={14} />}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
 
             {/* Lap time distribution */}
             <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
