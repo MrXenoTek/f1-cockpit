@@ -443,25 +443,55 @@ export default function App() {
   const telChart = useMemo(() => {
     if (!currentCarData.length) return [];
     const d1 = currentCarData, d2 = cmpCarData || [];
+    const lapData = laps.find((l) => l.driver_number === selDrv && l.lap_number === curLap);
+    const dt = (lapData?.lap_duration || 90) / 199; // seconds per sample
     const res = [];
     for (let i = 0; i < 200; i++) {
       const i1 = Math.floor((i / 199) * (d1.length - 1));
       const p1 = d1[i1];
       if (!p1) continue;
-      const pt = { i, speed1: p1.speed, throttle1: p1.throttle, brake1: p1.brake, gear1: p1.n_gear, ers1: getErsVal(p1, d1[i1 - 1]) };
+      const prevP1 = d1[Math.max(0, i1 - 1)];
+      const dv1 = ((p1.speed - (prevP1?.speed ?? p1.speed)) * 1000) / 3600; // m/s
+      const gLong1 = Math.max(-5, Math.min(5, dv1 / (dt * 9.81)));
+      const pt = { i, speed1: p1.speed, throttle1: p1.throttle, brake1: p1.brake, gear1: p1.n_gear, ers1: getErsVal(p1, d1[i1 - 1]), gLong1 };
       if (d2.length) {
         const i2 = Math.floor((i / 199) * (d2.length - 1));
         const p2 = d2[i2];
         if (p2) {
+          const prevP2 = d2[Math.max(0, i2 - 1)];
+          const dv2 = ((p2.speed - (prevP2?.speed ?? p2.speed)) * 1000) / 3600;
           pt.speed2 = p2.speed; pt.throttle2 = p2.throttle; pt.brake2 = p2.brake;
           pt.gear2 = p2.n_gear; pt.ers2 = getErsVal(p2, d2[i2 - 1]);
           pt.delta = pt.speed1 - pt.speed2;
+          pt.gLong2 = Math.max(-5, Math.min(5, dv2 / (dt * 9.81)));
         }
       }
       res.push(pt);
     }
     return res;
-  }, [currentCarData, cmpCarData, is26]);
+  }, [currentCarData, cmpCarData, is26, laps, selDrv, curLap]);
+
+  // Corner apex speeds — maps each corner to the minimum speed in that track zone
+  const cornerSpeeds = useMemo(() => {
+    if (!corners.length || !trackX.length || !currentCarData.length) return [];
+    const getApex = (data, progress) => {
+      if (!data.length) return null;
+      const idx = Math.floor(progress * data.length);
+      const win = Math.max(6, Math.floor(data.length * 0.03));
+      const chunk = data.slice(Math.max(0, idx - win), Math.min(data.length, idx + win)).filter((p) => p.speed > 30);
+      return chunk.length ? Math.round(Math.min(...chunk.map((p) => p.speed))) : null;
+    };
+    return corners.map((corner) => {
+      const cx = corner.trackPosition.x, cy = corner.trackPosition.y;
+      let minDist = Infinity, nearestIdx = 0;
+      for (let i = 0; i < trackX.length; i++) {
+        const d = Math.hypot(trackX[i] - cx, trackY[i] - cy);
+        if (d < minDist) { minDist = d; nearestIdx = i; }
+      }
+      const progress = nearestIdx / trackX.length;
+      return { number: corner.number, speed1: getApex(currentCarData, progress), speed2: cmpCarData.length ? getApex(cmpCarData, progress) : null };
+    }).filter((c) => c.speed1 !== null);
+  }, [corners, trackX, trackY, currentCarData, cmpCarData]);
 
   const selDrvObj = drivers.find((d) => d.driver_number === selDrv);
   const cmpDrvObj = drivers.find((d) => d.driver_number === cmpDrv);
@@ -557,6 +587,7 @@ export default function App() {
             selDrvObj={selDrvObj} cmpDrvObj={cmpDrvObj} hoveredIndex={hoveredIndex}
             s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t}
             mapMetric={mapMetric} setMapMetric={setMapMetric}
+            currentCarData={currentCarData}
           />
           <div style={{ position: "absolute", bottom: 8, left: 12, right: 12, display: "flex", gap: 6 }}>
             {maxLap > 1 && (
@@ -590,7 +621,7 @@ export default function App() {
           rfDrv={rfDrv} setRfDrv={setRfDrv} rfLap={rfLap} setRfLap={setRfLap}
           ss={ss} t={t} lang={lang} pits={pits} stints={stints} selDrv={selDrv} cmpDrv={cmpDrv}
           laps={laps} bestSectors={bestSectors} standings={standings} curLap={curLap}
-          gapData={gapData} overtakesPerLap={overtakesPerLap}
+          gapData={gapData} overtakesPerLap={overtakesPerLap} cornerSpeeds={cornerSpeeds}
         />
       </div>
 

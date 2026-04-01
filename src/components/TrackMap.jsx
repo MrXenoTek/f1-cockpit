@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { ERS_C } from "../api";
 
+
 export default function TrackMap({
   trackX, trackY, corners, ersSegs, currentLap, driverDots,
   selDrv, cmpDrv, onSelect, telChart, c1, c2,
   selDrvObj, cmpDrvObj, hoveredIndex, s1Ratio, s2Ratio, t,
-  mapMetric, setMapMetric,
+  mapMetric, setMapMetric, currentCarData = [],
 }) {
   const [animIdx, setAnimIdx] = useState(null);
+  const [showAero, setShowAero] = useState(false);
+  const [showBrakeMarkers, setShowBrakeMarkers] = useState(false);
 
   useEffect(() => {
     let timer;
@@ -65,6 +68,44 @@ export default function TrackMap({
     }
   }
 
+  // Active aero segments (drs >= 10 = aero open)
+  const aeroEl = [];
+  if (showAero && currentCarData?.length > 20) {
+    const step = Math.max(1, Math.floor(currentCarData.length / 300));
+    const sampled = currentCarData.filter((_, i) => i % step === 0);
+    const tLen = sampled.length;
+    for (let i = 1; i < tLen; i++) {
+      if (((sampled[i].drs) ?? 0) < 10) continue;
+      const a = Math.floor(((i - 1) / tLen) * pts.length);
+      const b = Math.min(Math.floor((i / tLen) * pts.length), pts.length - 1);
+      aeroEl.push({ x1: pts[a].x, y1: pts[a].y, x2: pts[b].x, y2: pts[b].y, k: `aero-${i}` });
+    }
+  }
+
+  // Brake initiation markers per corner
+  const brakeMarkers = [];
+  if (showBrakeMarkers && currentCarData?.length > 20 && corners?.length && trackX?.length) {
+    for (const corner of corners) {
+      const cx = corner.trackPosition.x, cy = corner.trackPosition.y;
+      let minDist = Infinity, nearestIdx = 0;
+      for (let i = 0; i < trackX.length; i++) {
+        const d = Math.hypot(trackX[i] - cx, trackY[i] - cy);
+        if (d < minDist) { minDist = d; nearestIdx = i; }
+      }
+      const progress = nearestIdx / trackX.length;
+      const telIdx = Math.floor(progress * currentCarData.length);
+      const lookback = Math.floor(currentCarData.length * 0.04);
+      for (let i = Math.max(1, telIdx - lookback); i < telIdx; i++) {
+        const p = currentCarData[i], prev = currentCarData[i - 1];
+        if (p?.brake > 25 && (prev?.brake ?? 0) <= 25) {
+          const bp = Math.min(Math.floor((i / currentCarData.length) * pts.length), pts.length - 1);
+          brakeMarkers.push({ pt: pts[Math.max(0, bp)], corner: corner.number });
+          break;
+        }
+      }
+    }
+  }
+
   // Driver dots with replay logic
   const visibleDots = cmpDrv
     ? driverDots.filter((d) => d.dn === selDrv || d.dn === cmpDrv).sort((a, b) => (a.dn === selDrv ? -1 : 1))
@@ -118,15 +159,24 @@ export default function TrackMap({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      {/* Replay button */}
-      {telChart?.length > 10 && (
-        <button
-          onClick={() => setAnimIdx(animIdx !== null ? null : 0)}
-          style={{ position: "absolute", top: 12, right: 12, zIndex: 10, background: "#1a1a1a", border: "1px solid #333", color: "#ccc", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-        >
-          {animIdx !== null ? "⏹ STOP" : "🔄 REPLAY"}
-        </button>
-      )}
+      {/* Top-right button group */}
+      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 10, display: "flex", gap: 4, alignItems: "center" }}>
+        {currentCarData?.length > 10 && corners?.length > 0 && (
+          <button onClick={() => setShowBrakeMarkers((p) => !p)} style={{ background: showBrakeMarkers ? "#1a0800" : "#1a1a1a", border: `1px solid ${showBrakeMarkers ? "#FF6600" : "#333"}`, color: showBrakeMarkers ? "#FF6600" : "#888", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
+            ⎔ BRAKE
+          </button>
+        )}
+        {currentCarData?.length > 10 && (
+          <button onClick={() => setShowAero((p) => !p)} style={{ background: showAero ? "#001a1a" : "#1a1a1a", border: `1px solid ${showAero ? "#00E5FF" : "#333"}`, color: showAero ? "#00E5FF" : "#888", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
+            ⚡ AERO
+          </button>
+        )}
+        {telChart?.length > 10 && (
+          <button onClick={() => setAnimIdx(animIdx !== null ? null : 0)} style={{ background: "#1a1a1a", border: "1px solid #333", color: "#ccc", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+            {animIdx !== null ? "⏹ STOP" : "🔄 REPLAY"}
+          </button>
+        )}
+      </div>
 
       {/* Metric selector in VS mode */}
       {cmpDrv && setMapMetric && (
@@ -161,6 +211,18 @@ export default function TrackMap({
         {/* Colored segments (ERS or VS dominance) */}
         {el.map((l) => (
           <line key={l.k} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={l.c} strokeWidth="5" strokeLinecap="round" opacity={0.85} filter="url(#gl)" />
+        ))}
+
+        {/* Active aero zones */}
+        {aeroEl.map((l) => (
+          <line key={l.k} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke="#00E5FF" strokeWidth="7" strokeLinecap="round" opacity={0.65} filter="url(#gl)" />
+        ))}
+
+        {/* Brake initiation markers */}
+        {brakeMarkers.map((m) => (
+          <g key={`brake-${m.corner}`} style={{ pointerEvents: "none" }}>
+            <polygon points={`${m.pt.x},${m.pt.y - 7} ${m.pt.x - 5},${m.pt.y + 4} ${m.pt.x + 5},${m.pt.y + 4}`} fill="#FF6600" opacity={0.9} />
+          </g>
         ))}
 
         {/* Track center line */}
@@ -229,6 +291,20 @@ export default function TrackMap({
         <text x={w - 12} y={22} textAnchor="end" style={{ fontSize: 12, fill: "#E8002D", fontFamily: "var(--f)", fontWeight: 700 }}>
           {t("lap").toUpperCase()} {currentLap}
         </text>
+
+        {/* Aero / brake overlay legends */}
+        {showAero && (
+          <g transform={`translate(12, ${cmpDrv ? 74 : 118})`}>
+            <line x1="0" y1="4" x2="14" y2="4" stroke="#00E5FF" strokeWidth="4" strokeLinecap="round" />
+            <text x="20" y="7" style={{ fontSize: 8, fill: "#00E5FF", fontFamily: "var(--f)", fontWeight: 700 }}>ACTIVE AERO</text>
+          </g>
+        )}
+        {showBrakeMarkers && (
+          <g transform={`translate(12, ${(cmpDrv ? 74 : 118) + (showAero ? 14 : 0)})`}>
+            <polygon points="7,0 12,9 2,9" fill="#FF6600" />
+            <text x="20" y="7" style={{ fontSize: 8, fill: "#FF6600", fontFamily: "var(--f)", fontWeight: 700 }}>BRAKE ZONES</text>
+          </g>
+        )}
 
         {/* Legend */}
         <g transform="translate(12, 40)">
