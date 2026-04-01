@@ -623,6 +623,7 @@ export default function App() {
           ss={ss} t={t} lang={lang} pits={pits} stints={stints} selDrv={selDrv} cmpDrv={cmpDrv}
           laps={laps} bestSectors={bestSectors} standings={standings} curLap={curLap}
           gapData={gapData} overtakesPerLap={overtakesPerLap} cornerSpeeds={cornerSpeeds}
+          lapSC={lapSC} sessionKey={selSess?.session_key}
         />
       </div>
 
