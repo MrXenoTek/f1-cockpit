@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter, ZAxis } from "recharts";
 import { tc, COMP_C, fmtLap } from "../api";
 
@@ -10,9 +10,30 @@ export default function RightPanel({
   drivers, maxLap, rfDrv, setRfDrv, rfLap, setRfLap, ss, t, lang,
   pits, stints, selDrv, cmpDrv, laps, bestSectors, standings, curLap,
   gapData, overtakesPerLap, cornerSpeeds = [],
+  lapSC, sessionKey,
 }) {
   const [bestLapNavSector, setBestLapNavSector] = useState("s1");
   const [showFuelCorr, setShowFuelCorr] = useState(false);
+  const [editLap, setEditLap] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [annotations, setAnnotations] = useState({});
+  const [showReport, setShowReport] = useState(false);
+
+  const annoKey = sessionKey && selDrv ? `f1c_anno_${sessionKey}_${selDrv}` : null;
+  useEffect(() => {
+    if (!annoKey) { setAnnotations({}); return; }
+    try { setAnnotations(JSON.parse(localStorage.getItem(annoKey) || "{}")); }
+    catch { setAnnotations({}); }
+  }, [annoKey]);
+  const saveAnnotation = useCallback((lapNum, text) => {
+    setAnnotations((prev) => {
+      const next = { ...prev };
+      if (text.trim()) next[lapNum] = text.trim(); else delete next[lapNum];
+      if (annoKey) try { localStorage.setItem(annoKey, JSON.stringify(next)); } catch {}
+      return next;
+    });
+    setEditLap(null);
+  }, [annoKey]);
 
   const drvLaps = useMemo(
     () => laps.filter((l) => l.driver_number === selDrv).sort((a, b) => b.lap_number - a.lap_number),
@@ -215,6 +236,68 @@ export default function RightPanel({
     const keywords = ["PENALTY", "DRIVE THROUGH", "STOP AND GO", "DISQUALIF", "REPRIMAND", "BLACK FLAG"];
     return rCtrl.filter((m) => keywords.some((kw) => (m.message || "").toUpperCase().includes(kw)));
   }, [rCtrl]);
+
+  // SC/VSC status for pit window optimization
+  const scStatus = useMemo(() => {
+    if (!rCtrl.length) return null;
+    const lapEntry = laps.find((l) => l.driver_number === selDrv && l.lap_number === curLap);
+    if (!lapEntry?.date_start) return null;
+    const lapStart = new Date(lapEntry.date_start).getTime();
+    const lapEnd = lapStart + ((lapEntry.lap_duration || 120) * 1000);
+    const scMsg = rCtrl.find((m) => {
+      const mT = new Date(m.date).getTime();
+      return mT >= lapStart - 30000 && mT <= lapEnd &&
+        (m.message?.includes("SAFETY CAR") || m.message?.includes("VIRTUAL") || m.message?.includes("VSC"));
+    });
+    if (!scMsg) return null;
+    return scMsg.message.includes("VIRTUAL") || scMsg.message.includes("VSC") ? "VSC" : "SC";
+  }, [rCtrl, laps, selDrv, curLap]);
+
+  // Multi-stop strategy matrix
+  const multiStopMatrix = useMemo(() => {
+    if (!strategyInsights || !selDrv || maxLap < 10) return null;
+    const remaining = maxLap - curLap;
+    if (remaining < 5) return null;
+    const baseLap = strategyInsights.predictedTimeIn5Laps || pb.lap || 90;
+    const slope = Math.max(0, strategyInsights.slope || 0);
+    const PIT_COST = 23;
+    return [1, 2, 3].map((stops) => {
+      const stintLen = Math.ceil(remaining / (stops + 1));
+      // Sum of degradation per stint: slope * (0 + 1 + ... + stintLen-1) = slope * stintLen*(stintLen-1)/2
+      const stintDeg = slope * stintLen * (stintLen - 1) / 2;
+      const totalTime = baseLap * remaining + (stops + 1) * stintDeg + stops * PIT_COST;
+      return { stops, stintLen, totalTime };
+    });
+  }, [strategyInsights, maxLap, curLap, pb, selDrv]);
+
+  // Race report auto-generator
+  const raceReport = useMemo(() => {
+    if (!selDrv || !drvLaps.length) return null;
+    const drv = drivers.find((d) => d.driver_number === selDrv);
+    if (!drv) return null;
+    const validLaps = drvLaps.filter((l) => l.lap_duration && l.lap_duration < bestSectors.lap * 1.1);
+    if (!validLaps.length) return null;
+    const best = validLaps.reduce((b, l) => l.lap_duration < (b?.lap_duration || 9999) ? l : b, null);
+    const drvStints = stints.filter((s) => s.driver_number === selDrv).sort((a, b) => a.lap_start - b.lap_start);
+    const scCount = rCtrl.filter((m) => m.message?.includes("SAFETY CAR") && !m.message?.includes("VIRTUAL")).length;
+    const vscCount = rCtrl.filter((m) => m.message?.includes("VIRTUAL") || m.message?.includes("VSC")).length;
+    const penaltyCount = rCtrl.filter((m) => m.message?.includes("PENALTY") || m.message?.includes("DRIVE THROUGH")).length;
+    const avgPace = validLaps.reduce((s, l) => s + l.lap_duration, 0) / validLaps.length;
+    const parts = [];
+    parts.push(`${drv.full_name || drv.name_acronym} — ${curLap}/${maxLap} ${lang === "fr" ? "tours" : "laps"}`);
+    if (drvPits.length) parts.push(`${drvPits.length} ${lang === "fr" ? "arrêt(s)" : "pit stop(s)"}`);
+    if (best) parts.push(`${lang === "fr" ? "Meilleur tour" : "Best lap"}: ${fmtLap(best.lap_duration)} (L${best.lap_number})`);
+    parts.push(`${lang === "fr" ? "Rythme moy." : "Avg pace"}: ${fmtLap(avgPace)}`);
+    if (drvStints.length) {
+      const compounds = [...new Set(drvStints.map((s) => s.compound).filter(Boolean))];
+      if (compounds.length) parts.push(`${lang === "fr" ? "Gommes" : "Tyres"}: ${compounds.join(" → ")}`);
+    }
+    if (strategyInsights?.slope > 0.02) parts.push(`${lang === "fr" ? "Dégradation" : "Degradation"}: ${strategyInsights.slope.toFixed(3)}s/${lang === "fr" ? "t" : "lap"}`);
+    if (scCount) parts.push(`${scCount} ${lang === "fr" ? "SC" : "Safety Car(s)"}`);
+    if (vscCount) parts.push(`${vscCount} ${lang === "fr" ? "VSC" : "VSC"}`);
+    if (penaltyCount) parts.push(`${penaltyCount} ${lang === "fr" ? "pénalité(s)" : "penalty(ies)"}`);
+    return parts.join(" · ");
+  }, [selDrv, drvLaps, drvPits, stints, rCtrl, drivers, bestSectors, curLap, maxLap, lang, strategyInsights]);
 
   // Best lap composite per sector for selDrv
   const bestLapComposite = useMemo(() => {
@@ -519,19 +602,80 @@ export default function RightPanel({
                     </div>
                   </div>
                 )}
+                {/* VSC/SC pit window optimizer */}
+                {(lapSC || scStatus) && (
+                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#FFD600", animation: "pulse 1s infinite" }} />
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#FFD600" }}>
+                        {lapSC || scStatus} — {lang === "fr" ? "FENÊTRE PIT OPTIMALE" : "OPTIMAL PIT WINDOW"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 8, color: "#888", marginTop: 3 }}>
+                      {lang === "fr"
+                        ? "Arrêt sous SC économise ~6-10s vs arrêt sous drapeau vert"
+                        : "Pit under SC saves ~6-10s vs green flag stop"}
+                    </div>
+                  </div>
+                )}
+                {/* Multi-stop strategy matrix */}
+                {multiStopMatrix && (
+                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222" }}>
+                    <div style={{ color: "#666", fontSize: 8, marginBottom: 5 }}>
+                      {lang === "fr" ? "MATRICE DE STRATÉGIE" : "STRATEGY MATRIX"} ({lang === "fr" ? `${maxLap - curLap} tours restants` : `${maxLap - curLap} laps left`})
+                    </div>
+                    {multiStopMatrix.map(({ stops, stintLen, totalTime }) => {
+                      const best = Math.min(...multiStopMatrix.map((s) => s.totalTime));
+                      const isBest = totalTime === best;
+                      return (
+                        <div key={stops} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: stops < 3 ? "1px solid #1a1a1a" : "none" }}>
+                          <span style={{ fontSize: 8, color: isBest ? "#00D26A" : "#888" }}>
+                            {isBest ? "★ " : ""}{stops}-{lang === "fr" ? "arrêt" : "stop"} (~{stintLen}L/{lang === "fr" ? "relais" : "stint"})
+                          </span>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: isBest ? "#00D26A" : "#aaa" }}>
+                            {fmtLap(totalTime)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr", gap: 6, color: "#666", fontWeight: 700, borderBottom: "1px solid #1c1c1c", paddingBottom: 4, marginBottom: 6, textTransform: "uppercase" }}>
-              <div>LAP</div><div>S1</div><div>S2</div><div>S3</div><div style={{ textAlign: "right" }}>TIME</div>
+            <div style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr 16px", gap: 6, color: "#666", fontWeight: 700, borderBottom: "1px solid #1c1c1c", paddingBottom: 4, marginBottom: 6, textTransform: "uppercase" }}>
+              <div>LAP</div><div>S1</div><div>S2</div><div>S3</div><div style={{ textAlign: "right" }}>TIME</div><div />
             </div>
             {drvLaps.map((l) => (
-              <div key={l.lap_number} style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr", gap: 6, borderBottom: "1px solid #181818", padding: "6px 0", alignItems: "center" }}>
-                <div style={{ color: "#888", fontWeight: 700, fontSize: 10 }}>{l.lap_number}</div>
-                <div style={{ color: getColor(l.duration_sector_1, bestSectors.s1, pb.s1) }}>{l.duration_sector_1?.toFixed(3) || "-"}</div>
-                <div style={{ color: getColor(l.duration_sector_2, bestSectors.s2, pb.s2) }}>{l.duration_sector_2?.toFixed(3) || "-"}</div>
-                <div style={{ color: getColor(l.duration_sector_3, bestSectors.s3, pb.s3) }}>{l.duration_sector_3?.toFixed(3) || "-"}</div>
-                <div style={{ textAlign: "right", fontWeight: 700, color: getColor(l.lap_duration, bestSectors.lap, pb.lap), fontSize: 10 }}>{fmtLap(l.lap_duration)}</div>
+              <div key={l.lap_number}>
+                <div style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr 16px", gap: 6, borderBottom: annotations[l.lap_number] && editLap !== l.lap_number ? "none" : "1px solid #181818", padding: "6px 0", alignItems: "center" }}>
+                  <div style={{ color: "#888", fontWeight: 700, fontSize: 10 }}>{l.lap_number}</div>
+                  <div style={{ color: getColor(l.duration_sector_1, bestSectors.s1, pb.s1) }}>{l.duration_sector_1?.toFixed(3) || "-"}</div>
+                  <div style={{ color: getColor(l.duration_sector_2, bestSectors.s2, pb.s2) }}>{l.duration_sector_2?.toFixed(3) || "-"}</div>
+                  <div style={{ color: getColor(l.duration_sector_3, bestSectors.s3, pb.s3) }}>{l.duration_sector_3?.toFixed(3) || "-"}</div>
+                  <div style={{ textAlign: "right", fontWeight: 700, color: getColor(l.lap_duration, bestSectors.lap, pb.lap), fontSize: 10 }}>{fmtLap(l.lap_duration)}</div>
+                  <button onClick={() => { setEditLap(editLap === l.lap_number ? null : l.lap_number); setEditText(annotations[l.lap_number] || ""); }}
+                    style={{ background: "none", border: "none", color: annotations[l.lap_number] ? "#B366FF" : "#333", cursor: "pointer", fontSize: 9, padding: 0, lineHeight: 1 }} title="Annotate lap">✏️</button>
+                </div>
+                {editLap === l.lap_number && (
+                  <div style={{ display: "flex", gap: 3, padding: "4px 0 6px", borderBottom: "1px solid #181818" }}>
+                    <input
+                      autoFocus
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveAnnotation(l.lap_number, editText); if (e.key === "Escape") setEditLap(null); }}
+                      placeholder={lang === "fr" ? "Note sur ce tour…" : "Note for this lap…"}
+                      style={{ flex: 1, background: "#111", border: "1px solid #333", color: "#ccc", borderRadius: 3, padding: "3px 6px", fontSize: 8, fontFamily: "var(--f)", outline: "none" }}
+                    />
+                    <button onClick={() => saveAnnotation(l.lap_number, editText)} style={{ background: "#B366FF", border: "none", color: "#fff", borderRadius: 3, padding: "2px 6px", fontSize: 8, cursor: "pointer" }}>✓</button>
+                    <button onClick={() => { saveAnnotation(l.lap_number, ""); }} style={{ background: "#2a0a0a", border: "1px solid #E8002D33", color: "#E8002D", borderRadius: 3, padding: "2px 6px", fontSize: 8, cursor: "pointer" }}>✗</button>
+                  </div>
+                )}
+                {annotations[l.lap_number] && editLap !== l.lap_number && (
+                  <div style={{ fontSize: 7, color: "#B366FF", padding: "2px 0 5px 26px", borderBottom: "1px solid #181818", fontStyle: "italic" }}>
+                    ✏️ {annotations[l.lap_number]}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -751,6 +895,25 @@ export default function RightPanel({
 
         {tab === "analysis" && (
           <div style={{ fontSize: 9 }}>
+            {/* Race report */}
+            {raceReport && (
+              <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showReport ? 6 : 0 }}>
+                  <div style={{ fontSize: 8, color: "#666", letterSpacing: 1 }}>
+                    📋 {lang === "fr" ? "RAPPORT DE COURSE" : "RACE REPORT"}
+                  </div>
+                  <button onClick={() => setShowReport((p) => !p)} style={{ background: showReport ? "#1a1a2a" : "#1a1a1a", border: `1px solid ${showReport ? "#3671C6" : "#333"}`, color: showReport ? "#3671C6" : "#555", borderRadius: 3, padding: "2px 6px", fontSize: 7, cursor: "pointer", fontFamily: "var(--f)" }}>
+                    {showReport ? "▲" : "▼ SHOW"}
+                  </button>
+                </div>
+                {showReport && (
+                  <div style={{ fontSize: 8, color: "#aaa", lineHeight: 1.6, borderTop: "1px solid #1a1a1a", paddingTop: 6 }}>
+                    {raceReport}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Radar chart */}
             <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
               <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 6 }}>
