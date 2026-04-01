@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter, ZAxis } from "recharts";
 import { tc, COMP_C, fmtLap } from "../api";
 
 // Typical compound life in laps (for pit window predictor)
@@ -12,6 +12,7 @@ export default function RightPanel({
   gapData, overtakesPerLap, cornerSpeeds = [],
 }) {
   const [bestLapNavSector, setBestLapNavSector] = useState("s1");
+  const [showFuelCorr, setShowFuelCorr] = useState(false);
 
   const drvLaps = useMemo(
     () => laps.filter((l) => l.driver_number === selDrv).sort((a, b) => b.lap_number - a.lap_number),
@@ -39,12 +40,15 @@ export default function RightPanel({
     for (let i = 1; i <= maxLap; i++) {
       const l1 = laps.find((l) => l.lap_number === i && l.driver_number === selDrv);
       const l2 = cmpDrv ? laps.find((l) => l.lap_number === i && l.driver_number === cmpDrv) : null;
+      const fuelCorr = showFuelCorr ? (maxLap - i) * 0.035 : 0;
       let t1 = l1?.lap_duration; if (t1 > threshold) t1 = null;
       let t2 = l2?.lap_duration; if (t2 > threshold) t2 = null;
+      if (t1) t1 = parseFloat((t1 - fuelCorr).toFixed(3));
+      if (t2) t2 = parseFloat((t2 - fuelCorr).toFixed(3));
       if (t1 || t2) data.push({ lap: i, t1, t2 });
     }
     return data;
-  }, [laps, selDrv, cmpDrv, maxLap, bestSectors.lap]);
+  }, [laps, selDrv, cmpDrv, maxLap, bestSectors.lap, showFuelCorr]);
 
   const strategyInsights = useMemo(() => {
     if (!selDrv || drvLaps.length === 0) return null;
@@ -164,6 +168,53 @@ export default function RightPanel({
       selDeg,
     };
   }, [cmpDrv, strategyInsights, stints, allPits, curLap]);
+
+  // Constructor pace comparison
+  const constructorPace = useMemo(() => {
+    if (!laps.length || !drivers.length || bestSectors.lap >= 9999) return [];
+    const threshold = bestSectors.lap * 1.1;
+    const teamLaps = {};
+    laps.forEach((l) => {
+      if (!l.lap_duration || l.lap_duration > threshold) return;
+      const drv = drivers.find((d) => d.driver_number === l.driver_number);
+      if (!drv) return;
+      const team = drv.team_name;
+      if (!teamLaps[team]) teamLaps[team] = [];
+      teamLaps[team].push(l.lap_duration);
+    });
+    return Object.entries(teamLaps).map(([team, times]) => {
+      const sorted = [...times].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      return { team, median, count: times.length };
+    }).sort((a, b) => a.median - b.median);
+  }, [laps, drivers, bestSectors.lap]);
+
+  // Tyre degradation scatter data (all stints, per compound)
+  const degradationData = useMemo(() => {
+    if (!stints.length || !laps.length || bestSectors.lap >= 9999) return [];
+    const threshold = bestSectors.lap * 1.1;
+    const result = [];
+    stints.forEach((s) => {
+      if (!s.compound) return;
+      const stintLaps = laps.filter((l) =>
+        l.driver_number === s.driver_number &&
+        l.lap_number >= s.lap_start &&
+        (s.lap_end ? l.lap_number <= s.lap_end : true) &&
+        l.lap_duration && l.lap_duration < threshold
+      );
+      stintLaps.forEach((l) => {
+        const age = (s.tyre_age_at_start || 0) + (l.lap_number - s.lap_start);
+        result.push({ x: age, y: l.lap_duration, compound: s.compound });
+      });
+    });
+    return result;
+  }, [stints, laps, bestSectors.lap]);
+
+  // Penalties from race control
+  const penalties = useMemo(() => {
+    const keywords = ["PENALTY", "DRIVE THROUGH", "STOP AND GO", "DISQUALIF", "REPRIMAND", "BLACK FLAG"];
+    return rCtrl.filter((m) => keywords.some((kw) => (m.message || "").toUpperCase().includes(kw)));
+  }, [rCtrl]);
 
   // Best lap composite per sector for selDrv
   const bestLapComposite = useMemo(() => {
@@ -378,7 +429,12 @@ export default function RightPanel({
 
             {paceData.length > 0 && (
               <div style={{ marginBottom: 10, height: 140, background: "#111", padding: "8px 0", borderRadius: 4, border: "1px solid #1c1c1c" }}>
-                <div style={{ fontSize: 8, color: "#666", textAlign: "center", marginBottom: 4, letterSpacing: 1 }}>RACE PACE</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px", marginBottom: 4 }}>
+                  <div style={{ fontSize: 8, color: "#666", letterSpacing: 1 }}>RACE PACE</div>
+                  <button onClick={() => setShowFuelCorr((p) => !p)} style={{ fontSize: 7, padding: "1px 5px", background: showFuelCorr ? "#001a00" : "#1a1a1a", border: `1px solid ${showFuelCorr ? "#00D26A" : "#333"}`, color: showFuelCorr ? "#00D26A" : "#555", borderRadius: 3, cursor: "pointer", fontFamily: "var(--f)", fontWeight: 700 }}>
+                    ⛽ {lang === "fr" ? "CORR. CARBURANT" : "FUEL CORR."}
+                  </button>
+                </div>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={paceData} margin={{ top: 5, right: 15, bottom: 0, left: 0 }}>
                     <YAxis domain={["auto", "auto"]} hide />
@@ -522,6 +578,33 @@ export default function RightPanel({
               </div>
             )}
 
+            {/* Tyre degradation scatter */}
+            {degradationData.length > 5 && (
+              <div style={{ marginBottom: 10, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 4 }}>
+                  {lang === "fr" ? "DÉGRADATION DES PNEUS" : "TYRE DEGRADATION"}
+                </div>
+                <div style={{ height: 120 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                      <XAxis dataKey="x" name={lang === "fr" ? "Âge" : "Age"} tick={{ fontSize: 7, fill: "#555", fontFamily: "var(--f)" }} label={{ value: lang === "fr" ? "Tours pneus" : "Tyre laps", position: "insideBottomRight", offset: 0, fontSize: 7, fill: "#555" }} />
+                      <YAxis dataKey="y" name={lang === "fr" ? "Temps" : "Time"} tick={{ fontSize: 7, fill: "#555", fontFamily: "var(--f)" }} width={28} tickFormatter={(v) => v.toFixed(0)} domain={["auto", "auto"]} />
+                      <ZAxis range={[10, 10]} />
+                      <Tooltip
+                        contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 9, fontFamily: "var(--f)", padding: "3px 7px" }}
+                        formatter={(v, name) => [name === (lang === "fr" ? "Âge" : "Age") ? `${v}L` : fmtLap(v), name]}
+                      />
+                      {Object.keys(COMP_C).map((compound) => {
+                        const pts = degradationData.filter((d) => d.compound === compound);
+                        if (!pts.length) return null;
+                        return <Scatter key={compound} name={compound} data={pts} fill={COMP_C[compound]} opacity={0.7} />;
+                      })}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 40px 50px", gap: 6, color: "#666", fontWeight: 700, borderBottom: "1px solid #1c1c1c", paddingBottom: 4, marginBottom: 6 }}>
               <div>LAP</div><div>DRIVER</div><div>TYRE</div><div style={{ textAlign: "right" }}>TIME</div>
             </div>
@@ -623,6 +706,30 @@ export default function RightPanel({
 
         {tab === "ctrl" && (
           <div>
+            {penalties.length > 0 && (
+              <div style={{ marginBottom: 10, background: "#1a0808", border: "1px solid #E8002D33", borderRadius: 4, padding: "6px 8px" }}>
+                <div style={{ fontSize: 8, color: "#E8002D", letterSpacing: 1, fontWeight: 700, marginBottom: 5 }}>
+                  ⚖️ {lang === "fr" ? "PÉNALITÉS" : "PENALTIES"} ({penalties.length})
+                </div>
+                {penalties.map((m, i) => {
+                  const drv = drivers.find((d) => d.driver_number === m.driver_number);
+                  return (
+                    <div key={i} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: i < penalties.length - 1 ? "1px solid #2a1010" : "none" }}>
+                      <div style={{ width: 3, minHeight: 16, background: "#E8002D", borderRadius: 1, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: "#ff6666", lineHeight: 1.3 }}>{m.message}</div>
+                        {(drv || m.lap_number) && (
+                          <div style={{ fontSize: 7, color: "#666", marginTop: 1 }}>
+                            {drv && <span style={{ color: tc(drv.team_name) }}>{drv.name_acronym} · </span>}
+                            {m.lap_number ? `T${m.lap_number}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {rCtrl.length === 0 ? (
               <div style={{ color: "#444", fontSize: 9, padding: "16px 0", textAlign: "center" }}>
                 {lang === "fr" ? "Aucun message enregistré" : "No messages recorded"}
@@ -799,6 +906,35 @@ export default function RightPanel({
                       )}
                     </div>
                   );
+                })()}
+              </div>
+            )}
+
+            {/* Constructor pace comparison */}
+            {constructorPace.length > 1 && (
+              <div style={{ marginTop: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 6 }}>
+                  {lang === "fr" ? "RYTHME PAR ÉQUIPE" : "TEAM PACE COMPARISON"}
+                </div>
+                {(() => {
+                  const fastest = constructorPace[0].median;
+                  const slowest = constructorPace[constructorPace.length - 1].median;
+                  const range = slowest - fastest || 1;
+                  return constructorPace.map((row, i) => {
+                    const barW = Math.max(5, 100 - ((row.median - fastest) / range) * 80);
+                    const color = tc(row.team);
+                    return (
+                      <div key={row.team} style={{ display: "grid", gridTemplateColumns: "70px 1fr 46px", gap: 4, alignItems: "center", marginBottom: 4 }}>
+                        <div style={{ fontSize: 7, color: color || "#aaa", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.team}>
+                          {i + 1}. {row.team.split(" ").pop()}
+                        </div>
+                        <div style={{ height: 6, background: "#1a1a1a", borderRadius: 3, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${barW}%`, background: color || "#444", borderRadius: 3, transition: "width 0.3s" }} />
+                        </div>
+                        <div style={{ fontSize: 7, color: "#888", textAlign: "right", fontFamily: "var(--f)" }}>{fmtLap(row.median)}</div>
+                      </div>
+                    );
+                  });
                 })()}
               </div>
             )}
