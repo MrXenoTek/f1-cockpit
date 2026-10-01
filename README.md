@@ -4,7 +4,7 @@ Dashboard d'analyse de courses F1 avec visualisation ERS sur circuit (2026 regs)
 
 ## Fonctionnalités
 
-- **Circuit avec zones ERS** — Déploiement (bleu), Récolte (vert), Clipping (orange), Super Clipping (rouge), Lift & Coast (gris)
+- **Circuit avec zones ERS** — Déploiement (bleu), Récolte (vert), Clipping (ambre), Super Clipping (violet), Lift & Coast (gris pointillé)
 - **Mode "Par tour" / "Tous"** — Voir l'ERS tour par tour ou l'agrégé de toute la course
 - **Replay tour par tour** — Slider + boutons ◀▶ + play automatique
 - **Télémétrie** — Vitesse, throttle, frein, RPM, rapport, ERS estimé

@@ -1,6 +1,8 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, ScatterChart, Scatter, ZAxis } from "recharts";
 import { tc, COMP_C, fmtLap } from "../api";
+import { C } from "../theme";
+import Icon from "./Icon";
 
 // Typical compound life in laps (for pit window predictor)
 const COMPOUND_LIFE = { SOFT: 22, MEDIUM: 35, HARD: 50, INTERMEDIATE: 40, WET: 60 };
@@ -89,10 +91,10 @@ export default function RightPanel({
   }, [drvLaps, drvPits, curLap, bestSectors.lap, stints, selDrv]);
 
   const getColor = (val, best, pb) => {
-    if (!val) return "#444";
-    if (val <= best) return "#B366FF";
-    if (val <= pb) return "#00D26A";
-    return "#FFD600";
+    if (!val) return "#838B97";
+    if (val <= best) return C.purple;
+    if (val <= pb) return C.green;
+    return C.b;
   };
 
   const pb = useMemo(() => {
@@ -108,9 +110,9 @@ export default function RightPanel({
 
   const selDrvObj = drivers.find((d) => d.driver_number === selDrv);
   const cmpDrvObj = drivers.find((d) => d.driver_number === cmpDrv);
-  const c1 = tc(selDrvObj?.team_name) || "#00D4FF";
-  let c2 = tc(cmpDrvObj?.team_name) || "#FF8C00";
-  if (c1 === c2) c2 = "#ffffff";
+  // Same fixed A/B colors as the rest of the app
+  const c1 = C.a;
+  const c2 = C.b;
 
   // Theoretical best lap
   const theoreticalBest = useMemo(() => {
@@ -356,15 +358,14 @@ export default function RightPanel({
     };
   }, [drvLaps, cmpLaps, bestSectors, cmpDrv]);
 
-  const TABS = [
-    { id: "timing",   l: t("timing")  || "Temps" },
-    { id: "pits",     l: t("pits")    || "Stands" },
-    { id: "champ",    l: t("champ")   || "🏆 Champ." },
-    { id: "weather",  l: t("weather") || "Météo" },
-    { id: "radio",    l: t("radio")   || "Radio",   c: filtRadios.length },
-    { id: "ctrl",     l: t("ctrl")    || "Dir.",     c: rCtrl.length },
-    { id: "analysis", l: "📊" },
+  // Four top-level groups; groups with several views get a sub-tab row.
+  const GROUPS = [
+    { id: "timing", l: t("timing"), icon: "timer", tabs: [{ id: "timing", l: t("timing") }, { id: "analysis", l: t("analysis") }] },
+    { id: "strategy", l: t("strategy"), icon: "tyre", tabs: [{ id: "pits", l: t("pits") }] },
+    { id: "comms", l: t("comms"), icon: "chat", c: filtRadios.length + rCtrl.length, tabs: [{ id: "radio", l: t("radio"), c: filtRadios.length }, { id: "ctrl", l: t("ctrl"), c: rCtrl.length }] },
+    { id: "conditions", l: t("conditions"), icon: "cloud", tabs: [{ id: "weather", l: t("weather") }, { id: "champ", l: t("champ") }] },
   ];
+  const activeGroup = GROUPS.find((g) => g.tabs.some((x) => x.id === tab)) || GROUPS[0];
 
   // SVG Radar chart renderer
   const RadarChart = ({ data1, data2, color1, color2, size = 160 }) => {
@@ -400,7 +401,7 @@ export default function RightPanel({
         {/* Axis lines */}
         {axes.map((ax, i) => {
           const [px, py] = getPoint(100, i);
-          return <line key={ax.key} x1={cx} y1={cy} x2={px} y2={py} stroke="#333" strokeWidth={0.5} />;
+          return <line key={ax.key} x1={cx} y1={cy} x2={px} y2={py} stroke="#3A414B" strokeWidth={0.5} />;
         })}
         {/* Data polygon 2 */}
         {data2 && (
@@ -413,7 +414,7 @@ export default function RightPanel({
           const [px, py] = getPoint(115, i);
           return (
             <text key={ax.key} x={px} y={py} textAnchor="middle" dominantBaseline="middle"
-              fontSize={8} fill="#888" fontFamily="var(--f)"
+              fontSize={11} fill="#A9B0BB" fontFamily="var(--f)"
             >{ax.label}</text>
           );
         })}
@@ -434,7 +435,7 @@ export default function RightPanel({
         <line x1={toX(dist.q3)} x2={toX(dist.max)} y1={y} y2={y} stroke={color} strokeWidth={1} strokeDasharray="2 2" />
         <rect x={toX(dist.q1)} y={y - 6} width={toX(dist.q3) - toX(dist.q1)} height={12} fill={color + "33"} stroke={color} strokeWidth={1} rx={2} />
         <line x1={toX(dist.median)} x2={toX(dist.median)} y1={y - 6} y2={y + 6} stroke={color} strokeWidth={2} />
-        <text x={toX(dist.median)} y={y + 14} textAnchor="middle" fontSize={7} fill={color} fontFamily="var(--f)">{fmtLap(dist.median)}</text>
+        <text x={toX(dist.median)} y={y + 14} textAnchor="middle" fontSize={10} fill={color} fontFamily="var(--f)">{fmtLap(dist.median)}</text>
       </g>
     );
     return (
@@ -446,34 +447,49 @@ export default function RightPanel({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", background: "#0c0c0c", height: "100%" }}>
-      <div style={{ display: "flex", borderBottom: "1px solid #131313", flexWrap: "wrap" }}>
-        {TABS.map((tb) => (
-          <button
-            key={tb.id}
-            onClick={() => setTab(tb.id)}
-            style={{ flex: 1, padding: "7px 4px", background: tab === tb.id ? "#131313" : "transparent", border: "none", borderBottom: tab === tb.id ? "2px solid #E8002D" : "2px solid transparent", color: tab === tb.id ? "#ccc" : "#555", cursor: "pointer", fontSize: 9, fontFamily: "var(--f)", fontWeight: 600 }}
-          >
-            {tb.l} {tb.c !== undefined && <span style={{ color: "#E8002D", marginLeft: 2 }}>{tb.c}</span>}
-          </button>
-        ))}
+    <div style={{ display: "flex", flexDirection: "column", background: C.panel, height: "100%", fontVariantNumeric: "tabular-nums" }}>
+      <div role="tablist" aria-label="Panels" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 4, padding: 8, borderBottom: `1px solid ${C.line}` }}>
+        {GROUPS.map((g) => {
+          const on = g.id === activeGroup.id;
+          return (
+            <button
+              key={g.id} role="tab" aria-selected={on}
+              onClick={() => setTab(g.tabs[0].id)}
+              style={{ position: "relative", height: 56, border: "none", borderRadius: 8, background: on ? C.selected : "transparent", color: on ? C.text : C.text2, fontSize: 12, fontWeight: 600, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}
+            >
+              <Icon name={g.icon} size={18} />
+              {g.l}
+              {g.c > 0 && <span className="num" aria-label={`${g.c}`} style={{ position: "absolute", top: 6, right: 8, minWidth: 18, height: 18, padding: "0 5px", borderRadius: 9, background: C.action, color: "#fff", fontSize: 13, lineHeight: "18px" }}>{g.c > 99 ? "99+" : g.c}</span>}
+            </button>
+          );
+        })}
       </div>
+      {activeGroup.tabs.length > 1 && (
+        <div role="tablist" aria-label={activeGroup.l} style={{ display: "flex", gap: 2, margin: "10px 12px 0", padding: 3, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 9 }}>
+          {activeGroup.tabs.map((x) => (
+            <button key={x.id} role="tab" aria-selected={tab === x.id} onClick={() => setTab(x.id)}
+              style={{ flex: 1, height: 34, border: "none", borderRadius: 6, background: tab === x.id ? C.selected : "transparent", color: tab === x.id ? C.text : C.text2, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {x.l}{x.c > 0 && <span className="num" style={{ fontSize: 12, color: C.text3 }}>{x.c}</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <div style={{ flex: 1, overflow: "auto", padding: "8px" }}>
+      <div role="tabpanel" style={{ flex: 1, overflow: "auto", padding: "12px 14px 16px", fontSize: 13 }}>
 
         {tab === "timing" && (
-          <div style={{ fontSize: 9 }}>
+          <div style={{ fontSize: 12 }}>
             {/* Gap to leader chart */}
             {gapData.length > 1 && (
-              <div style={{ marginBottom: 10, height: 120, background: "#111", padding: "8px 0 4px", borderRadius: 4, border: "1px solid #1c1c1c" }}>
-                <div style={{ fontSize: 8, color: "#666", textAlign: "center", marginBottom: 2, letterSpacing: 1 }}>
+              <div style={{ marginBottom: 10, height: 120, background: "#0D0F12", padding: "8px 0 4px", borderRadius: 4, border: "1px solid #262B33" }}>
+                <div style={{ fontSize: 12, color: "#838B97", textAlign: "center", marginBottom: 2, letterSpacing: 1 }}>
                   {lang === "fr" ? "ÉCART AU LEADER" : "GAP TO LEADER"}
                 </div>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={gapData} margin={{ top: 4, right: 14, bottom: 0, left: 0 }}>
                     <YAxis domain={["auto", "auto"]} hide />
                     <Tooltip
-                      contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 9, fontFamily: "var(--f)", padding: "3px 7px" }}
+                      contentStyle={{ background: "#1C2026", border: "1px solid #2E343D", borderRadius: 4, fontSize: 12, fontFamily: "var(--f)", padding: "3px 7px" }}
                       formatter={(v, name) => [`${v.toFixed(2)}s`, name === "gap1" ? (selDrvObj?.name_acronym || "P1") : (cmpDrvObj?.name_acronym || "P2")]}
                       labelFormatter={(l) => `${lang === "fr" ? "Tour" : "Lap"} ${l}`}
                     />
@@ -486,8 +502,8 @@ export default function RightPanel({
 
             {/* Theoretical best lap */}
             {theoreticalBest && (
-              <div style={{ marginBottom: 10, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "6px 8px" }}>
-                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 5 }}>
+              <div style={{ marginBottom: 10, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "6px 8px" }}>
+                <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 5 }}>
                   {lang === "fr" ? "MEILLEUR TOUR THÉORIQUE" : "THEORETICAL BEST LAP"}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 4 }}>
@@ -496,32 +512,32 @@ export default function RightPanel({
                     { label: "S2", val: theoreticalBest.s2, drv: theoreticalBest.s2Drv },
                     { label: "S3", val: theoreticalBest.s3, drv: theoreticalBest.s3Drv },
                   ].map((sec) => (
-                    <div key={sec.label} style={{ background: "#0e0e0e", borderRadius: 3, padding: "4px 5px", textAlign: "center" }}>
-                      <div style={{ color: "#555", fontSize: 7, marginBottom: 2 }}>{sec.label}</div>
-                      <div style={{ color: "#B366FF", fontWeight: 700, fontSize: 9 }}>{sec.val.toFixed(3)}</div>
-                      {sec.drv && <div style={{ color: sec.drv.color, fontSize: 7, marginTop: 1 }}>{sec.drv.acr}</div>}
+                    <div key={sec.label} style={{ background: "#0D0F12", borderRadius: 3, padding: "4px 5px", textAlign: "center" }}>
+                      <div style={{ color: "#838B97", fontSize: 11, marginBottom: 2 }}>{sec.label}</div>
+                      <div style={{ color: "#C77DFF", fontWeight: 700, fontSize: 12 }}>{sec.val.toFixed(3)}</div>
+                      {sec.drv && <div style={{ color: sec.drv.color, fontSize: 11, marginTop: 1 }}>{sec.drv.acr}</div>}
                     </div>
                   ))}
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4, borderTop: "1px solid #1a1a1a" }}>
-                  <span style={{ color: "#555", fontSize: 8 }}>{lang === "fr" ? "TOTAL THÉORIQUE" : "THEORETICAL TOTAL"}</span>
-                  <span style={{ color: "#B366FF", fontWeight: 700, fontSize: 10 }}>{fmtLap(theoreticalBest.total)}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 4, borderTop: "1px solid #262B33" }}>
+                  <span style={{ color: "#838B97", fontSize: 12 }}>{lang === "fr" ? "TOTAL THÉORIQUE" : "THEORETICAL TOTAL"}</span>
+                  <span style={{ color: "#C77DFF", fontWeight: 700, fontSize: 13 }}>{fmtLap(theoreticalBest.total)}</span>
                 </div>
               </div>
             )}
 
             {paceData.length > 0 && (
-              <div style={{ marginBottom: 10, height: 140, background: "#111", padding: "8px 0", borderRadius: 4, border: "1px solid #1c1c1c" }}>
+              <div style={{ marginBottom: 10, height: 140, background: "#0D0F12", padding: "8px 0", borderRadius: 4, border: "1px solid #262B33" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px", marginBottom: 4 }}>
-                  <div style={{ fontSize: 8, color: "#666", letterSpacing: 1 }}>RACE PACE</div>
-                  <button onClick={() => setShowFuelCorr((p) => !p)} style={{ fontSize: 7, padding: "1px 5px", background: showFuelCorr ? "#001a00" : "#1a1a1a", border: `1px solid ${showFuelCorr ? "#00D26A" : "#333"}`, color: showFuelCorr ? "#00D26A" : "#555", borderRadius: 3, cursor: "pointer", fontFamily: "var(--f)", fontWeight: 700 }}>
-                    ⛽ {lang === "fr" ? "CORR. CARBURANT" : "FUEL CORR."}
+                  <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1 }}>RACE PACE</div>
+                  <button onClick={() => setShowFuelCorr((p) => !p)} style={{ fontSize: 11, padding: "1px 5px", background: showFuelCorr ? "#001a00" : "#1C2026", border: `1px solid ${showFuelCorr ? "#3DDC84" : "#2E343D"}`, color: showFuelCorr ? "#3DDC84" : "#838B97", borderRadius: 3, cursor: "pointer", fontFamily: "var(--f)", fontWeight: 700 }}>
+                    {lang === "fr" ? "CORR. CARBURANT" : "FUEL CORR."}
                   </button>
                 </div>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={paceData} margin={{ top: 5, right: 15, bottom: 0, left: 0 }}>
                     <YAxis domain={["auto", "auto"]} hide />
-                    <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 10, fontFamily: "var(--f)", padding: "3px 7px" }} formatter={(v) => fmtLap(v)} labelFormatter={(l) => `Tour ${l}`} />
+                    <Tooltip contentStyle={{ background: "#1C2026", border: "1px solid #2E343D", borderRadius: 4, fontSize: 13, fontFamily: "var(--f)", padding: "3px 7px" }} formatter={(v) => fmtLap(v)} labelFormatter={(l) => `Tour ${l}`} />
                     <Line type="monotone" dataKey="t1" stroke={c1} strokeWidth={1.5} dot={{ r: 1 }} isAnimationActive={false} />
                     {cmpDrv && <Line type="monotone" dataKey="t2" stroke={c2} strokeWidth={1.5} dot={{ r: 1 }} isAnimationActive={false} strokeDasharray="3 3" />}
                   </LineChart>
@@ -530,48 +546,48 @@ export default function RightPanel({
             )}
 
             {strategyInsights && strategyInsights.slope !== 0 && (
-              <div style={{ marginBottom: 16, background: "#141414", border: "1px solid #222", borderRadius: 4, padding: "8px" }}>
+              <div style={{ marginBottom: 16, background: "#1C2026", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#B366FF", animation: "pulse 2s infinite" }} />
-                  <span style={{ fontSize: 9, fontWeight: 700, color: "#B366FF", letterSpacing: 1 }}>
-                    🧠 {lang === "fr" ? "STRATÉGIE AVANCÉE" : "ADVANCED STRATEGY"} : {selDrvObj?.name_acronym}
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#C77DFF", animation: "pulse 2s infinite" }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#C77DFF", letterSpacing: 1 }}>
+                    {lang === "fr" ? "STRATÉGIE AVANCÉE" : "ADVANCED STRATEGY"} : {selDrvObj?.name_acronym}
                   </span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <div>
-                    <div style={{ color: "#666", fontSize: 8 }}>{lang === "fr" ? "GOMME" : "TYRE"} ({strategyInsights.lapsOnTyre}{lang === "fr" ? "T" : "L"})</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#ccc" }}>
+                    <div style={{ color: "#838B97", fontSize: 12 }}>{lang === "fr" ? "GOMME" : "TYRE"} ({strategyInsights.lapsOnTyre}{lang === "fr" ? "T" : "L"})</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#ECEEF1" }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: COMP_C[strategyInsights.compound] || "#555" }} />
                       {strategyInsights.compound}
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: "#666", fontSize: 8 }}>{lang === "fr" ? "DÉGRADATION MOY." : "AVG. DEGRADATION"}</div>
-                    <div style={{ fontWeight: 700, color: strategyInsights.slope > 0 ? "#E8002D" : "#00D26A" }}>
+                    <div style={{ color: "#838B97", fontSize: 12 }}>{lang === "fr" ? "DÉGRADATION MOY." : "AVG. DEGRADATION"}</div>
+                    <div style={{ fontWeight: 700, color: strategyInsights.slope > 0 ? "#FF4D6A" : "#3DDC84" }}>
                       {strategyInsights.slope > 0 ? "+" : ""}{strategyInsights.slope.toFixed(3)}s / {lang === "fr" ? "tour" : "lap"}
                     </div>
                   </div>
                 </div>
-                <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ color: "#888", fontSize: 8 }}>{lang === "fr" ? "PRÉDICTION TOUR" : "PREDICTED LAP"} {curLap + 5}</span>
+                <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #262B33", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ color: "#A9B0BB", fontSize: 12 }}>{lang === "fr" ? "PRÉDICTION TOUR" : "PREDICTED LAP"} {curLap + 5}</span>
                   <span style={{ fontWeight: 700, color: "#fff" }}>{fmtLap(strategyInsights.predictedTimeIn5Laps)}</span>
                 </div>
 
                 {/* Pit window predictor */}
                 {pitWindow && (
-                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222" }}>
+                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #262B33" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ color: "#666", fontSize: 8 }}>{lang === "fr" ? "FENÊTRE D'ARRÊT" : "PIT WINDOW"}</span>
+                      <span style={{ color: "#838B97", fontSize: 12 }}>{lang === "fr" ? "FENÊTRE D'ARRÊT" : "PIT WINDOW"}</span>
                       <span style={{
-                        fontWeight: 700, fontSize: 9,
-                        color: pitWindow.status === "green" ? "#00D26A" : pitWindow.status === "yellow" ? "#FFD600" : "#E8002D",
+                        fontWeight: 700, fontSize: 12,
+                        color: pitWindow.status === "green" ? "#3DDC84" : pitWindow.status === "yellow" ? "#FFB020" : "#FF4D6A",
                       }}>
                         {pitWindow.remaining <= 0
                           ? (lang === "fr" ? "EN RETARD" : "OVERDUE")
                           : `${pitWindow.remaining} ${lang === "fr" ? "tours restants" : "laps remaining"}`}
                       </span>
                     </div>
-                    <div style={{ marginTop: 4, height: 4, background: "#1a1a1a", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ marginTop: 4, height: 4, background: "#1C2026", borderRadius: 2, overflow: "hidden" }}>
                       <div style={{
                         height: "100%", borderRadius: 2,
                         width: `${Math.min(100, (pitWindow.lapsOnTyre / pitWindow.life) * 100)}%`,
@@ -584,19 +600,19 @@ export default function RightPanel({
 
                 {/* Undercut calculator */}
                 {undercutInfo && (
-                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222" }}>
-                    <div style={{ color: "#666", fontSize: 8, marginBottom: 3 }}>
+                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #262B33" }}>
+                    <div style={{ color: "#838B97", fontSize: 12, marginBottom: 3 }}>
                       {lang === "fr" ? "ANALYSE UNDERCUT" : "UNDERCUT ANALYSIS"} vs {cmpDrvObj?.name_acronym}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: undercutInfo.favorable ? "#00D26A" : "#E8002D" }} />
-                      <span style={{ fontSize: 9, fontWeight: 700, color: undercutInfo.favorable ? "#00D26A" : "#E8002D" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: undercutInfo.favorable ? "#3DDC84" : "#FF4D6A" }}>
                         {undercutInfo.favorable
                           ? (lang === "fr" ? "Undercut favorable" : "Undercut favorable")
                           : (lang === "fr" ? "Undercut défavorable" : "Undercut not favorable")}
                       </span>
                     </div>
-                    <div style={{ fontSize: 8, color: "#555", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: "#838B97", marginTop: 2 }}>
                       {lang === "fr" ? "Dégradation" : "Degradation"}: {undercutInfo.selDeg.toFixed(3)}s/lap
                       {" · "}{cmpDrvObj?.name_acronym}: {undercutInfo.cmpLapsOnTyre}{lang === "fr" ? " tours" : " laps"} ({undercutInfo.cmpCompound})
                     </div>
@@ -604,14 +620,14 @@ export default function RightPanel({
                 )}
                 {/* VSC/SC pit window optimizer */}
                 {(lapSC || scStatus) && (
-                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222" }}>
+                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #262B33" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#FFD600", animation: "pulse 1s infinite" }} />
-                      <span style={{ fontSize: 9, fontWeight: 700, color: "#FFD600" }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#FFB020", animation: "pulse 1s infinite" }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#FFB020" }}>
                         {lapSC || scStatus} — {lang === "fr" ? "FENÊTRE PIT OPTIMALE" : "OPTIMAL PIT WINDOW"}
                       </span>
                     </div>
-                    <div style={{ fontSize: 8, color: "#888", marginTop: 3 }}>
+                    <div style={{ fontSize: 12, color: "#A9B0BB", marginTop: 3 }}>
                       {lang === "fr"
                         ? "Arrêt sous SC économise ~6-10s vs arrêt sous drapeau vert"
                         : "Pit under SC saves ~6-10s vs green flag stop"}
@@ -620,8 +636,8 @@ export default function RightPanel({
                 )}
                 {/* Multi-stop strategy matrix */}
                 {multiStopMatrix && (
-                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #222" }}>
-                    <div style={{ color: "#666", fontSize: 8, marginBottom: 5 }}>
+                  <div style={{ marginTop: 8, paddingTop: 6, borderTop: "1px solid #262B33" }}>
+                    <div style={{ color: "#838B97", fontSize: 12, marginBottom: 5 }}>
                       {lang === "fr" ? "MATRICE DE STRATÉGIE" : "STRATEGY MATRIX"} ({lang === "fr" ? `${maxLap - curLap} tours restants` : `${maxLap - curLap} laps left`})
                     </div>
                     {multiStopMatrix.map(({ stops, stintLen, totalTime }) => {
@@ -629,10 +645,10 @@ export default function RightPanel({
                       const isBest = totalTime === best;
                       return (
                         <div key={stops} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: stops < 3 ? "1px solid #1a1a1a" : "none" }}>
-                          <span style={{ fontSize: 8, color: isBest ? "#00D26A" : "#888" }}>
+                          <span style={{ fontSize: 12, color: isBest ? "#3DDC84" : "#A9B0BB" }}>
                             {isBest ? "★ " : ""}{stops}-{lang === "fr" ? "arrêt" : "stop"} (~{stintLen}L/{lang === "fr" ? "relais" : "stint"})
                           </span>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: isBest ? "#00D26A" : "#aaa" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: isBest ? "#3DDC84" : "#A9B0BB" }}>
                             {fmtLap(totalTime)}
                           </span>
                         </div>
@@ -643,37 +659,37 @@ export default function RightPanel({
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr 16px", gap: 6, color: "#666", fontWeight: 700, borderBottom: "1px solid #1c1c1c", paddingBottom: 4, marginBottom: 6, textTransform: "uppercase" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr 16px", gap: 6, color: "#838B97", fontWeight: 700, borderBottom: "1px solid #262B33", paddingBottom: 4, marginBottom: 6, textTransform: "uppercase" }}>
               <div>LAP</div><div>S1</div><div>S2</div><div>S3</div><div style={{ textAlign: "right" }}>TIME</div><div />
             </div>
             {drvLaps.map((l) => (
               <div key={l.lap_number}>
                 <div style={{ display: "grid", gridTemplateColumns: "26px 45px 45px 45px 1fr 16px", gap: 6, borderBottom: annotations[l.lap_number] && editLap !== l.lap_number ? "none" : "1px solid #181818", padding: "6px 0", alignItems: "center" }}>
-                  <div style={{ color: "#888", fontWeight: 700, fontSize: 10 }}>{l.lap_number}</div>
+                  <div style={{ color: "#A9B0BB", fontWeight: 700, fontSize: 13 }}>{l.lap_number}</div>
                   <div style={{ color: getColor(l.duration_sector_1, bestSectors.s1, pb.s1) }}>{l.duration_sector_1?.toFixed(3) || "-"}</div>
                   <div style={{ color: getColor(l.duration_sector_2, bestSectors.s2, pb.s2) }}>{l.duration_sector_2?.toFixed(3) || "-"}</div>
                   <div style={{ color: getColor(l.duration_sector_3, bestSectors.s3, pb.s3) }}>{l.duration_sector_3?.toFixed(3) || "-"}</div>
-                  <div style={{ textAlign: "right", fontWeight: 700, color: getColor(l.lap_duration, bestSectors.lap, pb.lap), fontSize: 10 }}>{fmtLap(l.lap_duration)}</div>
+                  <div style={{ textAlign: "right", fontWeight: 700, color: getColor(l.lap_duration, bestSectors.lap, pb.lap), fontSize: 13 }}>{fmtLap(l.lap_duration)}</div>
                   <button onClick={() => { setEditLap(editLap === l.lap_number ? null : l.lap_number); setEditText(annotations[l.lap_number] || ""); }}
-                    style={{ background: "none", border: "none", color: annotations[l.lap_number] ? "#B366FF" : "#333", cursor: "pointer", fontSize: 9, padding: 0, lineHeight: 1 }} title="Annotate lap">✏️</button>
+                    style={{ background: "none", border: "none", color: annotations[l.lap_number] ? C.purple : C.text3, cursor: "pointer", padding: "0 6px", lineHeight: 1, display: "inline-flex", alignItems: "center" }} title={lang === "fr" ? "Annoter le tour" : "Annotate lap"} aria-label={lang === "fr" ? "Annoter le tour" : "Annotate lap"}><Icon name="pencil" size={14} /></button>
                 </div>
                 {editLap === l.lap_number && (
-                  <div style={{ display: "flex", gap: 3, padding: "4px 0 6px", borderBottom: "1px solid #181818" }}>
+                  <div style={{ display: "flex", gap: 3, padding: "4px 0 6px", borderBottom: "1px solid #262B33" }}>
                     <input
                       autoFocus
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") saveAnnotation(l.lap_number, editText); if (e.key === "Escape") setEditLap(null); }}
                       placeholder={lang === "fr" ? "Note sur ce tour…" : "Note for this lap…"}
-                      style={{ flex: 1, background: "#111", border: "1px solid #333", color: "#ccc", borderRadius: 3, padding: "3px 6px", fontSize: 8, fontFamily: "var(--f)", outline: "none" }}
+                      style={{ flex: 1, background: "#0D0F12", border: "1px solid #2E343D", color: "#ECEEF1", borderRadius: 3, padding: "3px 6px", fontSize: 12, fontFamily: "var(--f)", }}
                     />
-                    <button onClick={() => saveAnnotation(l.lap_number, editText)} style={{ background: "#B366FF", border: "none", color: "#fff", borderRadius: 3, padding: "2px 6px", fontSize: 8, cursor: "pointer" }}>✓</button>
-                    <button onClick={() => { saveAnnotation(l.lap_number, ""); }} style={{ background: "#2a0a0a", border: "1px solid #E8002D33", color: "#E8002D", borderRadius: 3, padding: "2px 6px", fontSize: 8, cursor: "pointer" }}>✗</button>
+                    <button onClick={() => saveAnnotation(l.lap_number, editText)} aria-label={lang === "fr" ? "Enregistrer la note" : "Save note"} style={{ background: C.purple, border: "none", color: C.bg, borderRadius: 6, padding: "0 10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✓</button>
+                    <button onClick={() => { saveAnnotation(l.lap_number, ""); }} aria-label={lang === "fr" ? "Supprimer la note" : "Delete note"} style={{ background: "#2E1218", border: "1px solid #FF4D6A55", color: C.red, borderRadius: 6, padding: "0 10px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✗</button>
                   </div>
                 )}
                 {annotations[l.lap_number] && editLap !== l.lap_number && (
-                  <div style={{ fontSize: 7, color: "#B366FF", padding: "2px 0 5px 26px", borderBottom: "1px solid #181818", fontStyle: "italic" }}>
-                    ✏️ {annotations[l.lap_number]}
+                  <div style={{ fontSize: 11, color: "#C77DFF", padding: "2px 0 5px 26px", borderBottom: "1px solid #262B33", fontStyle: "italic" }}>
+                    {annotations[l.lap_number]}
                   </div>
                 )}
               </div>
@@ -682,19 +698,19 @@ export default function RightPanel({
         )}
 
         {tab === "pits" && (
-          <div style={{ fontSize: 9 }}>
+          <div style={{ fontSize: 12 }}>
             {/* Stint timeline */}
             {stintTimeline.length > 0 && maxLap > 1 && (
-              <div style={{ marginBottom: 10, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "6px 8px" }}>
-                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 6 }}>
+              <div style={{ marginBottom: 10, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "6px 8px" }}>
+                <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 6 }}>
                   {lang === "fr" ? "CHRONOLOGIE DES RELAIS" : "STINT TIMELINE"}
                 </div>
                 {stintTimeline.map(({ driver: drv, stints: drvStints }) => (
                   <div key={drv.driver_number} style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
-                    <div style={{ width: 24, fontSize: 7, color: tc(drv.team_name), fontWeight: 700, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ width: 34, fontSize: 11, color: C.text, fontWeight: 700, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {drv.name_acronym}
                     </div>
-                    <div style={{ flex: 1, height: 10, position: "relative", background: "#0e0e0e", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ flex: 1, height: 10, position: "relative", background: "#0D0F12", borderRadius: 2, overflow: "hidden" }}>
                       {drvStints.map((s, si) => {
                         const lapEnd = s.lap_end || maxLap;
                         const left = ((s.lap_start - 1) / maxLap) * 100;
@@ -713,7 +729,7 @@ export default function RightPanel({
                 ))}
                 <div style={{ display: "flex", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
                   {Object.entries(COMP_C).map(([comp, color]) => (
-                    <div key={comp} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 7, color: "#666" }}>
+                    <div key={comp} style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, color: "#838B97" }}>
                       <div style={{ width: 7, height: 7, borderRadius: 1, background: color }} />
                       {comp[0]}
                     </div>
@@ -724,18 +740,18 @@ export default function RightPanel({
 
             {/* Tyre degradation scatter */}
             {degradationData.length > 5 && (
-              <div style={{ marginBottom: 10, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
-                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 4 }}>
+              <div style={{ marginBottom: 10, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 4 }}>
                   {lang === "fr" ? "DÉGRADATION DES PNEUS" : "TYRE DEGRADATION"}
                 </div>
                 <div style={{ height: 120 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                      <XAxis dataKey="x" name={lang === "fr" ? "Âge" : "Age"} tick={{ fontSize: 7, fill: "#555", fontFamily: "var(--f)" }} label={{ value: lang === "fr" ? "Tours pneus" : "Tyre laps", position: "insideBottomRight", offset: 0, fontSize: 7, fill: "#555" }} />
-                      <YAxis dataKey="y" name={lang === "fr" ? "Temps" : "Time"} tick={{ fontSize: 7, fill: "#555", fontFamily: "var(--f)" }} width={28} tickFormatter={(v) => v.toFixed(0)} domain={["auto", "auto"]} />
+                      <XAxis dataKey="x" name={lang === "fr" ? "Âge" : "Age"} tick={{ fontSize: 11, fill: "#838B97", fontFamily: "var(--f)" }} label={{ value: lang === "fr" ? "Tours pneus" : "Tyre laps", position: "insideBottomRight", offset: 0, fontSize: 11, fill: "#838B97" }} />
+                      <YAxis dataKey="y" name={lang === "fr" ? "Temps" : "Time"} tick={{ fontSize: 11, fill: "#838B97", fontFamily: "var(--f)" }} width={28} tickFormatter={(v) => v.toFixed(0)} domain={["auto", "auto"]} />
                       <ZAxis range={[10, 10]} />
                       <Tooltip
-                        contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 9, fontFamily: "var(--f)", padding: "3px 7px" }}
+                        contentStyle={{ background: "#1C2026", border: "1px solid #2E343D", borderRadius: 4, fontSize: 12, fontFamily: "var(--f)", padding: "3px 7px" }}
                         formatter={(v, name) => [name === (lang === "fr" ? "Âge" : "Age") ? `${v}L` : fmtLap(v), name]}
                       />
                       {Object.keys(COMP_C).map((compound) => {
@@ -749,22 +765,22 @@ export default function RightPanel({
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 40px 50px", gap: 6, color: "#666", fontWeight: 700, borderBottom: "1px solid #1c1c1c", paddingBottom: 4, marginBottom: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 40px 50px", gap: 6, color: "#838B97", fontWeight: 700, borderBottom: "1px solid #262B33", paddingBottom: 4, marginBottom: 6 }}>
               <div>LAP</div><div>DRIVER</div><div>TYRE</div><div style={{ textAlign: "right" }}>TIME</div>
             </div>
             {allPits.length === 0 ? (
-              <div style={{ color: "#444", fontSize: 9, padding: "16px 0", textAlign: "center" }}>
+              <div style={{ color: "#838B97", fontSize: 12, padding: "16px 0", textAlign: "center" }}>
                 {lang === "fr" ? "Aucun arrêt enregistré" : "No pit stops recorded"}
               </div>
             ) : allPits.map((p, i) => {
               const drv = drivers.find((d) => d.driver_number === p.driver_number);
               const compColor = COMP_C[p.compound] || "#555";
               return (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "30px 1fr 40px 50px", gap: 6, borderBottom: "1px solid #181818", padding: "6px 0", alignItems: "center" }}>
-                  <div style={{ color: "#aaa", fontWeight: 700 }}>T{p.lap_number}</div>
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "30px 1fr 40px 50px", gap: 6, borderBottom: "1px solid #262B33", padding: "6px 0", alignItems: "center" }}>
+                  <div style={{ color: "#A9B0BB", fontWeight: 700 }}>T{p.lap_number}</div>
                   <div style={{ fontWeight: 700, color: tc(drv?.team_name) }}>{drv?.name_acronym || p.driver_number}</div>
                   <div>{p.compound && <div style={{ width: 8, height: 8, borderRadius: "50%", background: compColor, border: "1px solid #fff" }} title={p.compound} />}</div>
-                  <div style={{ textAlign: "right", color: "#ccc", fontWeight: 700 }}>{p.pit_duration?.toFixed(2)}s</div>
+                  <div style={{ textAlign: "right", color: "#ECEEF1", fontWeight: 700 }}>{p.pit_duration?.toFixed(2)}s</div>
                 </div>
               );
             })}
@@ -772,18 +788,18 @@ export default function RightPanel({
         )}
 
         {tab === "champ" && (
-          <div style={{ fontSize: 9 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "24px 1fr 40px 40px", gap: 6, color: "#666", fontWeight: 700, borderBottom: "1px solid #1c1c1c", paddingBottom: 4, marginBottom: 6 }}>
+          <div style={{ fontSize: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "24px 1fr 40px 40px", gap: 6, color: "#838B97", fontWeight: 700, borderBottom: "1px solid #262B33", paddingBottom: 4, marginBottom: 6 }}>
               <div>POS</div><div>PILOTE</div><div style={{ textAlign: "center" }}>WINS</div><div style={{ textAlign: "right" }}>PTS</div>
             </div>
             {!standings || standings.length === 0 ? (
-              <div style={{ color: "#444", textAlign: "center", padding: "16px 0" }}>{lang === "fr" ? "Données non disponibles" : "No data available"}</div>
+              <div style={{ color: "#838B97", textAlign: "center", padding: "16px 0" }}>{lang === "fr" ? "Données non disponibles" : "No data available"}</div>
             ) : standings.map((s) => (
-              <div key={s.Driver.driverId} style={{ display: "grid", gridTemplateColumns: "24px 1fr 40px 40px", gap: 6, borderBottom: "1px solid #181818", padding: "6px 0", alignItems: "center" }}>
-                <div style={{ color: s.position === "1" ? "#FFD600" : "#aaa", fontWeight: 700, fontSize: 10 }}>{s.position}</div>
+              <div key={s.Driver.driverId} style={{ display: "grid", gridTemplateColumns: "24px 1fr 40px 40px", gap: 6, borderBottom: "1px solid #262B33", padding: "6px 0", alignItems: "center" }}>
+                <div style={{ color: s.position === "1" ? "#FFB020" : "#A9B0BB", fontWeight: 700, fontSize: 13 }}>{s.position}</div>
                 <div style={{ fontWeight: 700, color: tc(s.Constructors[0]?.name) }}>{s.Driver.givenName} {s.Driver.familyName.toUpperCase()}</div>
-                <div style={{ textAlign: "center", color: "#888" }}>{s.wins}</div>
-                <div style={{ textAlign: "right", color: "#ccc", fontWeight: 700 }}>{s.points}</div>
+                <div style={{ textAlign: "center", color: "#A9B0BB" }}>{s.wins}</div>
+                <div style={{ textAlign: "right", color: "#ECEEF1", fontWeight: 700 }}>{s.points}</div>
               </div>
             ))}
           </div>
@@ -792,18 +808,18 @@ export default function RightPanel({
         {tab === "weather" && (
           <>
             {curWeather && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: "8px", background: "#131313", borderRadius: 4, marginBottom: 8, fontSize: 10, border: "1px solid #1c1c1c" }}>
-                <div><span style={{ color: "#666" }}>{lang === "fr" ? "Piste" : "Track"}</span><span style={{ color: "#FF8C00", fontWeight: 700, float: "right" }}>{curWeather.track_temperature}°C</span></div>
-                <div><span style={{ color: "#666" }}>{lang === "fr" ? "Air" : "Air"}</span><span style={{ color: "#00D4FF", fontWeight: 700, float: "right" }}>{curWeather.air_temperature}°C</span></div>
-                <div><span style={{ color: "#666" }}>{lang === "fr" ? "Vent" : "Wind"}</span><span style={{ color: "#ccc", float: "right" }}>{curWeather.wind_speed} m/s</span></div>
-                <div><span style={{ color: "#666" }}>{lang === "fr" ? "Pluie" : "Rain"}</span><span style={{ color: curWeather.rainfall ? "#00D4FF" : "#ccc", float: "right" }}>{curWeather.rainfall ? (lang === "fr" ? "Oui" : "Yes") : (lang === "fr" ? "Non" : "No")}</span></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, padding: "8px", background: "#1C2026", borderRadius: 4, marginBottom: 8, fontSize: 13, border: "1px solid #262B33" }}>
+                <div><span style={{ color: "#838B97" }}>{lang === "fr" ? "Piste" : "Track"}</span><span style={{ color: "#FFB020", fontWeight: 700, float: "right" }}>{curWeather.track_temperature}°C</span></div>
+                <div><span style={{ color: "#838B97" }}>{lang === "fr" ? "Air" : "Air"}</span><span style={{ color: "#5B9BFF", fontWeight: 700, float: "right" }}>{curWeather.air_temperature}°C</span></div>
+                <div><span style={{ color: "#838B97" }}>{lang === "fr" ? "Vent" : "Wind"}</span><span style={{ color: "#ECEEF1", float: "right" }}>{curWeather.wind_speed} m/s</span></div>
+                <div><span style={{ color: "#838B97" }}>{lang === "fr" ? "Pluie" : "Rain"}</span><span style={{ color: curWeather.rainfall ? "#5B9BFF" : "#ECEEF1", float: "right" }}>{curWeather.rainfall ? (lang === "fr" ? "Oui" : "Yes") : (lang === "fr" ? "Non" : "No")}</span></div>
               </div>
             )}
             <div style={{ height: 120 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={weather} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
                   <YAxis domain={["dataMin-2", "dataMax+2"]} hide />
-                  <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 10, fontFamily: "var(--f)", padding: "3px 7px" }} labelFormatter={() => ""} />
+                  <Tooltip contentStyle={{ background: "#1C2026", border: "1px solid #2E343D", borderRadius: 4, fontSize: 13, fontFamily: "var(--f)", padding: "3px 7px" }} labelFormatter={() => ""} />
                   <Line type="monotone" dataKey="track_temperature" stroke="#FF8C00" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                   <Line type="monotone" dataKey="air_temperature" stroke="#00D4FF" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                 </LineChart>
@@ -815,26 +831,26 @@ export default function RightPanel({
         {tab === "radio" && (
           <>
             <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
-              <select value={rfDrv} onChange={(e) => setRfDrv(e.target.value)} style={{ ...ss, flex: 1, fontSize: 9 }}>
+              <select value={rfDrv} onChange={(e) => setRfDrv(e.target.value)} style={{ ...ss, flex: 1, fontSize: 12 }}>
                 <option value="">{lang === "fr" ? "Tous" : "All"}</option>
                 {drivers.map((d) => <option key={d.driver_number} value={d.driver_number}>{d.name_acronym}</option>)}
               </select>
-              <select value={rfLap} onChange={(e) => setRfLap(e.target.value)} style={{ ...ss, width: 60, fontSize: 9 }}>
+              <select value={rfLap} onChange={(e) => setRfLap(e.target.value)} style={{ ...ss, width: 104, fontSize: 13 }}>
                 <option value="">{lang === "fr" ? "Tour" : "Lap"}</option>
                 {Array.from({ length: maxLap }, (_, i) => i + 1).map((l) => <option key={l} value={l}>{lang === "fr" ? "T" : "L"}{l}</option>)}
               </select>
             </div>
             {filtRadios.length === 0 ? (
-              <div style={{ color: "#444", fontSize: 9, padding: "16px 8px", textAlign: "center" }}>{lang === "fr" ? "Aucune radio" : "No radio"}</div>
+              <div style={{ color: "#838B97", fontSize: 12, padding: "16px 8px", textAlign: "center" }}>{lang === "fr" ? "Aucune radio" : "No radio"}</div>
             ) : filtRadios.map((r, i) => {
               const drv = drivers.find((d) => d.driver_number === r.driver_number);
               return (
-                <div key={i} style={{ display: "flex", gap: 7, padding: "6px 0", borderBottom: "1px solid #181818" }}>
+                <div key={i} style={{ display: "flex", gap: 7, padding: "6px 0", borderBottom: "1px solid #262B33" }}>
                   <div style={{ width: 3, minHeight: 26, borderRadius: 2, background: tc(drv?.team_name), flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: tc(drv?.team_name) }}>{drv?.name_acronym || `#${r.driver_number}`}</span>
-                      <span style={{ fontSize: 8, color: "#444" }}>{r.lap ? `T${r.lap}` : ""}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: tc(drv?.team_name) }}>{drv?.name_acronym || `#${r.driver_number}`}</span>
+                      <span style={{ fontSize: 12, color: "#838B97" }}>{r.lap ? `T${r.lap}` : ""}</span>
                     </div>
                     {r.recording_url && (
                       <audio controls preload="none" style={{ width: "100%", height: 24, marginTop: 3 }}>
@@ -852,18 +868,18 @@ export default function RightPanel({
           <div>
             {penalties.length > 0 && (
               <div style={{ marginBottom: 10, background: "#1a0808", border: "1px solid #E8002D33", borderRadius: 4, padding: "6px 8px" }}>
-                <div style={{ fontSize: 8, color: "#E8002D", letterSpacing: 1, fontWeight: 700, marginBottom: 5 }}>
-                  ⚖️ {lang === "fr" ? "PÉNALITÉS" : "PENALTIES"} ({penalties.length})
+                <div style={{ fontSize: 12, color: "#FF4D6A", letterSpacing: 1, fontWeight: 700, marginBottom: 5 }}>
+                  {lang === "fr" ? "PÉNALITÉS" : "PENALTIES"} ({penalties.length})
                 </div>
                 {penalties.map((m, i) => {
                   const drv = drivers.find((d) => d.driver_number === m.driver_number);
                   return (
                     <div key={i} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: i < penalties.length - 1 ? "1px solid #2a1010" : "none" }}>
-                      <div style={{ width: 3, minHeight: 16, background: "#E8002D", borderRadius: 1, flexShrink: 0 }} />
+                      <div style={{ width: 3, minHeight: 16, background: "#FF4D6A", borderRadius: 1, flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 9, color: "#ff6666", lineHeight: 1.3 }}>{m.message}</div>
+                        <div style={{ fontSize: 12, color: "#ff6666", lineHeight: 1.3 }}>{m.message}</div>
                         {(drv || m.lap_number) && (
-                          <div style={{ fontSize: 7, color: "#666", marginTop: 1 }}>
+                          <div style={{ fontSize: 11, color: "#838B97", marginTop: 1 }}>
                             {drv && <span style={{ color: tc(drv.team_name) }}>{drv.name_acronym} · </span>}
                             {m.lap_number ? `T${m.lap_number}` : ""}
                           </div>
@@ -875,17 +891,17 @@ export default function RightPanel({
               </div>
             )}
             {rCtrl.length === 0 ? (
-              <div style={{ color: "#444", fontSize: 9, padding: "16px 0", textAlign: "center" }}>
+              <div style={{ color: "#838B97", fontSize: 12, padding: "16px 0", textAlign: "center" }}>
                 {lang === "fr" ? "Aucun message enregistré" : "No messages recorded"}
               </div>
             ) : [...rCtrl].reverse().map((m, i) => {
               const FLAG_COLORS = { GREEN: "#00D26A", YELLOW: "#FFD600", RED: "#E8002D", BLUE: "#3671C6", "DOUBLE YELLOW": "#FFA000", CLEAR: "#00D26A" };
               return (
-                <div key={i} style={{ display: "flex", gap: 6, padding: "4px 0", borderBottom: "1px solid #181818" }}>
+                <div key={i} style={{ display: "flex", gap: 6, padding: "4px 0", borderBottom: "1px solid #262B33" }}>
                   {m.flag && <div style={{ width: 8, height: 8, borderRadius: 2, background: FLAG_COLORS[m.flag] || "#444", flexShrink: 0, marginTop: 3 }} />}
                   <div>
-                    <div style={{ fontSize: 9, color: "#aaa", lineHeight: 1.3 }}>{m.message}</div>
-                    <div style={{ fontSize: 8, color: "#444" }}>{m.category} {m.lap_number ? `• T${m.lap_number}` : ""}</div>
+                    <div style={{ fontSize: 12, color: "#A9B0BB", lineHeight: 1.3 }}>{m.message}</div>
+                    <div style={{ fontSize: 12, color: "#838B97" }}>{m.category} {m.lap_number ? `• T${m.lap_number}` : ""}</div>
                   </div>
                 </div>
               );
@@ -894,20 +910,20 @@ export default function RightPanel({
         )}
 
         {tab === "analysis" && (
-          <div style={{ fontSize: 9 }}>
+          <div style={{ fontSize: 12 }}>
             {/* Race report */}
             {raceReport && (
-              <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
+              <div style={{ marginBottom: 12, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showReport ? 6 : 0 }}>
-                  <div style={{ fontSize: 8, color: "#666", letterSpacing: 1 }}>
-                    📋 {lang === "fr" ? "RAPPORT DE COURSE" : "RACE REPORT"}
+                  <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1 }}>
+                    {lang === "fr" ? "RAPPORT DE COURSE" : "RACE REPORT"}
                   </div>
-                  <button onClick={() => setShowReport((p) => !p)} style={{ background: showReport ? "#1a1a2a" : "#1a1a1a", border: `1px solid ${showReport ? "#3671C6" : "#333"}`, color: showReport ? "#3671C6" : "#555", borderRadius: 3, padding: "2px 6px", fontSize: 7, cursor: "pointer", fontFamily: "var(--f)" }}>
+                  <button onClick={() => setShowReport((p) => !p)} style={{ background: showReport ? "#1a1a2a" : "#1C2026", border: `1px solid ${showReport ? "#3671C6" : "#2E343D"}`, color: showReport ? "#5B9BFF" : "#838B97", borderRadius: 3, padding: "2px 6px", fontSize: 11, cursor: "pointer", fontFamily: "var(--f)" }}>
                     {showReport ? "▲" : "▼ SHOW"}
                   </button>
                 </div>
                 {showReport && (
-                  <div style={{ fontSize: 8, color: "#aaa", lineHeight: 1.6, borderTop: "1px solid #1a1a1a", paddingTop: 6 }}>
+                  <div style={{ fontSize: 12, color: "#A9B0BB", lineHeight: 1.6, borderTop: "1px solid #262B33", paddingTop: 6 }}>
                     {raceReport}
                   </div>
                 )}
@@ -915,20 +931,20 @@ export default function RightPanel({
             )}
 
             {/* Radar chart */}
-            <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
-              <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 6 }}>
+            <div style={{ marginBottom: 12, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
+              <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 6 }}>
                 {lang === "fr" ? "RADAR DE PERFORMANCE" : "PERFORMANCE RADAR"}
               </div>
               {radarData.sel ? (
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
                   <RadarChart data1={radarData.sel} data2={radarData.cmp} color1={c1} color2={c2} size={160} />
                   <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 8, color: c1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: c1 }}>
                       <div style={{ width: 10, height: 2, background: c1 }} />
                       {selDrvObj?.name_acronym || "P1"}
                     </div>
                     {radarData.cmp && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 8, color: c2 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: c2 }}>
                         <div style={{ width: 10, height: 2, background: c2, borderTop: "1px dashed " + c2 }} />
                         {cmpDrvObj?.name_acronym || "P2"}
                       </div>
@@ -936,7 +952,7 @@ export default function RightPanel({
                   </div>
                 </div>
               ) : (
-                <div style={{ color: "#444", textAlign: "center", padding: "16px 0", fontSize: 9 }}>
+                <div style={{ color: "#838B97", textAlign: "center", padding: "16px 0", fontSize: 12 }}>
                   {lang === "fr" ? "Données insuffisantes" : "Insufficient data"}
                 </div>
               )}
@@ -944,17 +960,17 @@ export default function RightPanel({
 
             {/* Corner apex speeds */}
             {cornerSpeeds.length > 0 && (
-              <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
-                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 4 }}>
+              <div style={{ marginBottom: 12, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 4 }}>
                   {lang === "fr" ? "VITESSE APEX PAR VIRAGE" : "CORNER APEX SPEEDS"}
                 </div>
                 <div style={{ height: 110 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={cornerSpeeds} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="15%" barGap={1}>
-                      <XAxis dataKey="number" tick={{ fill: "#555", fontSize: 7, fontFamily: "var(--f)" }} axisLine={false} tickLine={false} />
+                      <XAxis dataKey="number" tick={{ fill: "#838B97", fontSize: 11, fontFamily: "var(--f)" }} axisLine={false} tickLine={false} />
                       <YAxis domain={["auto", "auto"]} hide />
                       <Tooltip
-                        contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 9, fontFamily: "var(--f)", padding: "3px 7px" }}
+                        contentStyle={{ background: "#1C2026", border: "1px solid #2E343D", borderRadius: 4, fontSize: 12, fontFamily: "var(--f)", padding: "3px 7px" }}
                         formatter={(v, name) => [`${v} km/h`, name]}
                         labelFormatter={(l) => `${lang === "fr" ? "Virage" : "Corner"} ${l}`}
                       />
@@ -967,21 +983,21 @@ export default function RightPanel({
             )}
 
             {/* Lap time distribution */}
-            <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
-              <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 6 }}>
+            <div style={{ marginBottom: 12, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
+              <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 6 }}>
                 {lang === "fr" ? "DISTRIBUTION DES TEMPS" : "LAP TIME DISTRIBUTION"}
               </div>
               {lapDistribution.sel ? (
                 <div style={{ overflowX: "auto" }}>
                   <BoxPlot dist1={lapDistribution.sel} dist2={lapDistribution.cmp} color1={c1} color2={c2} width={290} height={cmpDrv ? 65 : 40} />
                   <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                    <div style={{ fontSize: 7, color: "#555" }}>
+                    <div style={{ fontSize: 11, color: "#838B97" }}>
                       Q1: {fmtLap(lapDistribution.sel.q1)} · Med: {fmtLap(lapDistribution.sel.median)} · Q3: {fmtLap(lapDistribution.sel.q3)}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div style={{ color: "#444", textAlign: "center", padding: "12px 0", fontSize: 9 }}>
+                <div style={{ color: "#838B97", textAlign: "center", padding: "12px 0", fontSize: 12 }}>
                   {lang === "fr" ? "Données insuffisantes" : "Insufficient data"}
                 </div>
               )}
@@ -989,17 +1005,17 @@ export default function RightPanel({
 
             {/* Overtakes bar chart */}
             {overtakesPerLap.length > 0 && (
-              <div style={{ marginBottom: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
-                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 4 }}>
+              <div style={{ marginBottom: 12, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 4 }}>
                   {lang === "fr" ? "DÉPASSEMENTS PAR TOUR" : "OVERTAKES PER LAP"}
                 </div>
                 <div style={{ height: 100 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={overtakesPerLap} margin={{ top: 4, right: 8, bottom: 0, left: 0 }} barCategoryGap="20%">
                       <XAxis dataKey="lap" hide />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 7, fill: "#555", fontFamily: "var(--f)" }} width={14} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#838B97", fontFamily: "var(--f)" }} width={14} />
                       <Tooltip
-                        contentStyle={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 4, fontSize: 9, fontFamily: "var(--f)", padding: "3px 7px" }}
+                        contentStyle={{ background: "#1C2026", border: "1px solid #2E343D", borderRadius: 4, fontSize: 12, fontFamily: "var(--f)", padding: "3px 7px" }}
                         formatter={(v) => [v, lang === "fr" ? "Dépassements" : "Overtakes"]}
                         labelFormatter={(l) => `${lang === "fr" ? "Tour" : "Lap"} ${l}`}
                       />
@@ -1008,7 +1024,7 @@ export default function RightPanel({
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <div style={{ fontSize: 7, color: "#555", textAlign: "right", marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: "#838B97", textAlign: "right", marginTop: 2 }}>
                   {lang === "fr" ? "Total" : "Total"}: {overtakesPerLap.reduce((s, o) => s + o.count, 0)}
                 </div>
               </div>
@@ -1016,17 +1032,17 @@ export default function RightPanel({
 
             {/* Best lap composite per sector */}
             {bestLapComposite && selDrvObj && (
-              <div style={{ background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
+              <div style={{ background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <div style={{ fontSize: 8, color: "#666", letterSpacing: 1 }}>
+                  <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1 }}>
                     {lang === "fr" ? "MEILLEUR SECTEUR PAR TOUR" : "BEST SECTOR BY LAP"} · {selDrvObj.name_acronym}
                   </div>
                   <div style={{ display: "flex", gap: 3 }}>
                     {["s1", "s2", "s3"].map((s) => (
                       <button key={s} onClick={() => setBestLapNavSector(s)} style={{
-                        background: bestLapNavSector === s ? "#E8002D" : "#1a1a1a",
-                        border: "1px solid #333", color: bestLapNavSector === s ? "#fff" : "#666",
-                        borderRadius: 3, padding: "2px 6px", fontSize: 8, cursor: "pointer", fontFamily: "var(--f)",
+                        background: bestLapNavSector === s ? "#E8002D" : "#1C2026",
+                        border: "1px solid #2E343D", color: bestLapNavSector === s ? "#fff" : "#838B97",
+                        borderRadius: 3, padding: "2px 6px", fontSize: 12, cursor: "pointer", fontFamily: "var(--f)",
                       }}>{s.toUpperCase()}</button>
                     ))}
                   </div>
@@ -1034,26 +1050,26 @@ export default function RightPanel({
                 {(() => {
                   const sMap = { s1: { lap: bestLapComposite.bestS1Lap, val: bestLapComposite.bestS1, best: bestSectors.s1 }, s2: { lap: bestLapComposite.bestS2Lap, val: bestLapComposite.bestS2, best: bestSectors.s2 }, s3: { lap: bestLapComposite.bestS3Lap, val: bestLapComposite.bestS3, best: bestSectors.s3 } };
                   const info = sMap[bestLapNavSector];
-                  if (!info.lap) return <div style={{ color: "#444", fontSize: 9 }}>{lang === "fr" ? "Pas de données" : "No data"}</div>;
+                  if (!info.lap) return <div style={{ color: "#838B97", fontSize: 12 }}>{lang === "fr" ? "Pas de données" : "No data"}</div>;
                   const lapRow = drvLaps.find((l) => l.lap_number === info.lap);
                   const isSessionBest = info.val <= info.best;
                   return (
                     <div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ color: "#888", fontSize: 9 }}>{lang === "fr" ? "Meilleur tour" : "Best lap"}</span>
-                        <span style={{ color: "#ccc", fontWeight: 700, fontSize: 11 }}>#{info.lap}</span>
+                        <span style={{ color: "#A9B0BB", fontSize: 12 }}>{lang === "fr" ? "Meilleur tour" : "Best lap"}</span>
+                        <span style={{ color: "#ECEEF1", fontWeight: 700, fontSize: 13 }}>#{info.lap}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 3 }}>
-                        <span style={{ color: "#666", fontSize: 8 }}>{bestLapNavSector.toUpperCase()} {lang === "fr" ? "perso" : "personal"}</span>
-                        <span style={{ color: isSessionBest ? "#B366FF" : "#00D26A", fontWeight: 700 }}>{info.val.toFixed(3)}s</span>
+                        <span style={{ color: "#838B97", fontSize: 12 }}>{bestLapNavSector.toUpperCase()} {lang === "fr" ? "perso" : "personal"}</span>
+                        <span style={{ color: isSessionBest ? "#C77DFF" : "#3DDC84", fontWeight: 700 }}>{info.val.toFixed(3)}s</span>
                       </div>
                       {isSessionBest && (
-                        <div style={{ marginTop: 3, fontSize: 8, color: "#B366FF" }}>
+                        <div style={{ marginTop: 3, fontSize: 12, color: "#C77DFF" }}>
                           ★ {lang === "fr" ? "Meilleur de la session" : "Session best"}
                         </div>
                       )}
                       {lapRow && (
-                        <div style={{ marginTop: 6, paddingTop: 5, borderTop: "1px solid #1a1a1a", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 3 }}>
+                        <div style={{ marginTop: 6, paddingTop: 5, borderTop: "1px solid #262B33", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 3 }}>
                           {[
                             { label: "S1", val: lapRow.duration_sector_1 },
                             { label: "S2", val: lapRow.duration_sector_2 },
@@ -1061,8 +1077,8 @@ export default function RightPanel({
                             { label: lang === "fr" ? "TPS" : "TIME", val: lapRow.lap_duration },
                           ].map((s) => (
                             <div key={s.label} style={{ textAlign: "center" }}>
-                              <div style={{ color: "#555", fontSize: 7 }}>{s.label}</div>
-                              <div style={{ color: "#aaa", fontSize: 8, fontWeight: 700 }}>{s.val ? s.val.toFixed(3) : "-"}</div>
+                              <div style={{ color: "#838B97", fontSize: 11 }}>{s.label}</div>
+                              <div style={{ color: "#A9B0BB", fontSize: 12, fontWeight: 700 }}>{s.val ? s.val.toFixed(3) : "-"}</div>
                             </div>
                           ))}
                         </div>
@@ -1075,8 +1091,8 @@ export default function RightPanel({
 
             {/* Constructor pace comparison */}
             {constructorPace.length > 1 && (
-              <div style={{ marginTop: 12, background: "#111", border: "1px solid #1c1c1c", borderRadius: 4, padding: "8px" }}>
-                <div style={{ fontSize: 8, color: "#666", letterSpacing: 1, marginBottom: 6 }}>
+              <div style={{ marginTop: 12, background: "#0D0F12", border: "1px solid #262B33", borderRadius: 4, padding: "8px" }}>
+                <div style={{ fontSize: 12, color: "#838B97", letterSpacing: 1, marginBottom: 6 }}>
                   {lang === "fr" ? "RYTHME PAR ÉQUIPE" : "TEAM PACE COMPARISON"}
                 </div>
                 {(() => {
@@ -1088,13 +1104,13 @@ export default function RightPanel({
                     const color = tc(row.team);
                     return (
                       <div key={row.team} style={{ display: "grid", gridTemplateColumns: "70px 1fr 46px", gap: 4, alignItems: "center", marginBottom: 4 }}>
-                        <div style={{ fontSize: 7, color: color || "#aaa", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.team}>
+                        <div style={{ fontSize: 11, color: color || "#aaa", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.team}>
                           {i + 1}. {row.team.split(" ").pop()}
                         </div>
-                        <div style={{ height: 6, background: "#1a1a1a", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: 6, background: "#1C2026", borderRadius: 3, overflow: "hidden" }}>
                           <div style={{ height: "100%", width: `${barW}%`, background: color || "#444", borderRadius: 3, transition: "width 0.3s" }} />
                         </div>
-                        <div style={{ fontSize: 7, color: "#888", textAlign: "right", fontFamily: "var(--f)" }}>{fmtLap(row.median)}</div>
+                        <div style={{ fontSize: 11, color: "#A9B0BB", textAlign: "right", fontFamily: "var(--f)" }}>{fmtLap(row.median)}</div>
                       </div>
                     );
                   });

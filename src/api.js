@@ -27,12 +27,12 @@ export const COMP_C = {
 
 // ─── ERS Segment Colors & Labels ────────────────────────────────────────────────
 export const ERS_C = {
-  deploy:     "#E8002D",   // rouge  — déploiement (moteur)
-  harvest:    "#00D26A",   // vert   — récolte (freinage regen)
-  clip:       "#00D4FF",   // cyan   — clipping
-  superclip:  "#B366FF",   // violet — super-clipping
-  coast:      "#FFD600",   // jaune  — lift & coast
-  neutral:    "#333333",   // gris   — neutre
+  deploy:     "#5B9BFF",   // bleu   — déploiement (moteur)
+  harvest:    "#3DDC84",   // vert   — récolte (freinage regen)
+  clip:       "#FFB020",   // ambre  — clipping
+  superclip:  "#C77DFF",   // violet — super-clipping
+  coast:      "#838B97",   // gris   — lift & coast
+  neutral:    "#2E343D",   // neutre
 };
 
 export const ERS_L = {

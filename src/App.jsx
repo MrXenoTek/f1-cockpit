@@ -4,25 +4,60 @@ import TrackMap from "./components/TrackMap";
 import Sidebar from "./components/Sidebar";
 import Telemetry from "./components/Telemetry";
 import RightPanel from "./components/RightPanel";
+import Icon, { PlayIcon } from "./components/Icon";
+import { C, FONT_UI, iconBtn, btn, segWrap, seg } from "./theme";
 
 const DICT = {
   fr: {
-    weather: "🌤️ Météo", radio: "📻 Radio", ctrl: "🏁 Dir.", pits: "🛠️ Stands",
-    timing: "⏱️ Temps", speed: "Vitesse", throttle: "Accélérateur", brake: "Frein",
-    gear: "Rapport", ers: "ERS", live: "DIRECT", ranking: "Classement", lap: "Tour",
-    dom: "DOMINATION SPATIALE", ers_state: "ÉTAT ERS", faster: "Plus rapide",
+    weather: "Météo", radio: "Radio", ctrl: "Direction", pits: "Stands",
+    timing: "Temps", speed: "Vitesse", throttle: "Accélérateur", brake: "Frein",
+    gear: "Rapport", ers: "ERS", live: "Direct", replay: "Replay", ranking: "Classement", lap: "Tour",
+    dom: "Domination", ers_state: "Mode ERS", faster: "plus rapide",
     deploy: "Déploiement", harvest: "Récolte", clip: "Clipping",
-    superclip: "Super Clip", coast: "Lift&Coast", tel: "TÉLÉMÉTRIE", champ: "🏆 Champ.",
+    superclip: "Super clip", coast: "Lift & coast", tel: "Télémétrie", champ: "Championnat",
+    analysis: "Analyse", strategy: "Stratégie", comms: "Comms", conditions: "Conditions",
+    leader: "Leader", lapsShort: "t.", posShort: "Pos", driver: "Pilote", tyre: "Pneu", gap: "Interv.",
+    selectA: "définir comme pilote A", compareB: "Comparer en B", stopCompare: "Arrêter la comparaison",
+    emptyStandings: "Choisissez une saison, un Grand Prix et une session pour charger le classement.",
+    season: "Saison", gp: "Grand Prix", session: "Session", share: "Partager", shortcuts: "Raccourcis clavier",
+    prevLap: "Tour précédent", nextLap: "Tour suivant", play: "Lecture", pause: "Pause",
+    connected: "Données connectées", connecting: "Connexion…", offline: "API indisponible",
+    track: "Circuit", fullscreen: "Plein écran", exitFs: "Quitter le plein écran", sc: "Safety car", pitA: "Arrêt A", pitB: "Arrêt B",
+    speedX: "Vitesse de lecture", lapOf: "sur",
+    brakeZones: "Freinages", activeAero: "Aéro active", animateLap: "Animer le tour", stopLap: "Arrêter",
   },
   en: {
-    weather: "🌤️ Weather", radio: "📻 Radio", ctrl: "🏁 Ctrl", pits: "🛠️ Pits",
-    timing: "⏱️ Timing", speed: "Speed", throttle: "Throttle", brake: "Brake",
-    gear: "Gear", ers: "ERS", live: "LIVE", ranking: "Standings", lap: "Lap",
-    dom: "SPATIAL DOMINATION", ers_state: "ERS STATE", faster: "Faster",
+    weather: "Weather", radio: "Radio", ctrl: "Race control", pits: "Pit stops",
+    timing: "Timing", speed: "Speed", throttle: "Throttle", brake: "Brake",
+    gear: "Gear", ers: "ERS", live: "Live", replay: "Replay", ranking: "Standings", lap: "Lap",
+    dom: "Domination", ers_state: "ERS mode", faster: "faster",
     deploy: "Deploy", harvest: "Harvest", clip: "Clipping",
-    superclip: "Super Clip", coast: "Lift & Coast", tel: "TELEMETRY", champ: "🏆 Champ.",
+    superclip: "Super clip", coast: "Lift & coast", tel: "Telemetry", champ: "Championship",
+    analysis: "Analysis", strategy: "Strategy", comms: "Comms", conditions: "Conditions",
+    leader: "Leader", lapsShort: "laps", posShort: "Pos", driver: "Driver", tyre: "Tyre", gap: "Interval",
+    selectA: "set as driver A", compareB: "Compare as B", stopCompare: "Stop comparing",
+    emptyStandings: "Pick a season, Grand Prix and session to load the standings.",
+    season: "Season", gp: "Grand Prix", session: "Session", share: "Share", shortcuts: "Keyboard shortcuts",
+    prevLap: "Previous lap", nextLap: "Next lap", play: "Play", pause: "Pause",
+    connected: "Data connected", connecting: "Connecting…", offline: "API unavailable",
+    track: "Track", fullscreen: "Full screen", exitFs: "Exit full screen", sc: "Safety car", pitA: "Pit A", pitB: "Pit B",
+    speedX: "Playback speed", lapOf: "of",
+    brakeZones: "Brake zones", activeAero: "Active aero", animateLap: "Animate lap", stopLap: "Stop",
   },
 };
+
+const srOnly = { position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" };
+
+// Header session picker: a native select styled as one segment of the breadcrumb
+function Picker({ label, value, onChange, children, minW, isMobile }) {
+  return (
+    <label style={{ position: "relative", display: "flex", alignItems: "center", borderRadius: 7, background: value ? C.raised : "transparent", minWidth: minW, flex: isMobile ? "1 1 auto" : "0 1 auto" }}>
+      <span style={srOnly}>{label}</span>
+      <select value={value} onChange={onChange} style={{ appearance: "none", WebkitAppearance: "none", background: "transparent", color: value ? C.text : C.text2, border: "none", borderRadius: 7, height: 36, padding: "0 30px 0 12px", fontSize: 14, fontWeight: 600, fontFamily: FONT_UI, width: "100%", maxWidth: isMobile ? "100%" : 260, textOverflow: "ellipsis" }}>{children}</select>
+      <span style={{ position: "absolute", right: 10, pointerEvents: "none", color: C.text2, display: "flex" }}><Icon name="chevron" size={14} /></span>
+    </label>
+  );
+}
 
 let toastIdCounter = 0;
 
@@ -67,6 +102,7 @@ export default function App() {
   const [mapMetric, setMapMetric] = useState("speed");
   const [toasts, setToasts] = useState([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(1);
   const prevRCtrlLen = useRef(0);
   const t = (k) => DICT[lang][k] || k;
 
@@ -111,9 +147,9 @@ export default function App() {
     prevRCtrlLen.current = rCtrl.length;
     newMsgs.forEach((m) => {
       const msg = m.message || "";
-      if (msg.includes("SAFETY CAR")) addToast("🚗 " + msg, "warning");
-      else if (msg.includes("VSC") || msg.includes("VIRTUAL SAFETY CAR")) addToast("🟡 " + msg, "warning");
-      else if (msg.includes("RED FLAG") || m.flag === "RED") addToast("🚨 " + msg, "danger");
+      if (msg.includes("SAFETY CAR")) addToast(msg, "warning");
+      else if (msg.includes("VSC") || msg.includes("VIRTUAL SAFETY CAR")) addToast(msg, "warning");
+      else if (msg.includes("RED FLAG") || m.flag === "RED") addToast(msg, "danger");
     });
   }, [rCtrl, isLive, addToast]);
 
@@ -124,7 +160,7 @@ export default function App() {
     const handleKeyDown = (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
       if (e.key === "?") { e.preventDefault(); setShowShortcuts((p) => !p); return; }
-      if (e.code === "Escape") { setShowShortcuts(false); return; }
+      if (e.code === "Escape") { setShowShortcuts(false); setIsMapFullscreen(false); return; }
       if (e.code === "Space") { e.preventDefault(); setPlay((p) => !p); }
       if (e.code === "ArrowLeft") { e.preventDefault(); setCurLap((l) => Math.max(1, l - 1)); }
       if (e.code === "ArrowRight") { e.preventDefault(); setCurLap((l) => Math.min(maxLap, l + 1)); }
@@ -325,9 +361,9 @@ export default function App() {
   }, [currentCarData, is26]);
 
   useEffect(() => {
-    if (play) playRef.current = setInterval(() => setCurLap((l) => { if (l >= maxLap) { setPlay(false); return l; } return l + 1; }), 1500);
+    if (play) playRef.current = setInterval(() => setCurLap((l) => { if (l >= maxLap) { setPlay(false); return l; } return l + 1; }), 1500 / playSpeed);
     return () => clearInterval(playRef.current);
-  }, [play, maxLap]);
+  }, [play, maxLap, playSpeed]);
 
   const curLapD = useMemo(() => { const m = new Map(); laps.filter((l) => l.lap_number === curLap).forEach((l) => m.set(l.driver_number, l)); return m; }, [laps, curLap]);
   const curIntv = useMemo(() => { const m = new Map(); intervals.forEach((i) => m.set(i.driver_number, i)); return m; }, [intervals]);
@@ -496,9 +532,9 @@ export default function App() {
 
   const selDrvObj = drivers.find((d) => d.driver_number === selDrv);
   const cmpDrvObj = drivers.find((d) => d.driver_number === cmpDrv);
-  const c1 = selDrvObj ? tc(selDrvObj.team_name) : "#00D4FF";
-  let c2 = cmpDrvObj ? tc(cmpDrvObj.team_name) : "#FF8C00";
-  if (c1 === c2) c2 = "#ffffff";
+  // Fixed A/B colors: the selected driver is always blue, the compared one always amber.
+  const c1 = C.a;
+  const c2 = C.b;
 
   const handleDriverSelect = (dn) => { setSelDrv(dn); if (cmpDrv === dn) setCmpDrv(null); };
 
@@ -516,106 +552,134 @@ export default function App() {
     if (curLap > 1) params.set("l", curLap);
     const url = `${window.location.origin}${window.location.pathname}#${params.toString()}`;
     navigator.clipboard.writeText(url).then(
-      () => addToast("🔗 Link copied!", "success"),
+      () => addToast(lang === "fr" ? "Lien copié" : "Link copied", "success"),
       () => addToast("Failed to copy", "danger")
     );
-  }, [year, selMeet, selSess, selDrv, curLap, addToast]);
+  }, [year, selMeet, selSess, selDrv, curLap, addToast, lang]);
 
   const curLapOvertakes = useMemo(() => {
     const entry = overtakesPerLap.find((o) => o.lap === curLap);
     return entry?.count || 0;
   }, [overtakesPerLap, curLap]);
 
-  const ss = { background: "#141414", color: "#aaa", border: "1px solid #1e1e1e", borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "var(--f)", outline: "none" };
+
+  // Timeline markers for the playback bar
+  const scLaps = useMemo(() => {
+    const set = new Set();
+    rCtrl.forEach((m) => {
+      const msg = m.message || "";
+      if (m.lap_number && (msg.includes("SAFETY CAR") || msg.includes("VSC"))) set.add(m.lap_number);
+    });
+    return [...set];
+  }, [rCtrl]);
+  const pitLapsA = useMemo(() => pits.filter((p) => p.driver_number === selDrv).map((p) => p.lap_number), [pits, selDrv]);
+  const pitLapsB = useMemo(() => (cmpDrv ? pits.filter((p) => p.driver_number === cmpDrv).map((p) => p.lap_number) : []), [pits, cmpDrv]);
+  const lapPct = (l) => (maxLap > 1 ? ((l - 1) / (maxLap - 1)) * 100 : 0);
+
+  const ss = { background: C.raised, color: C.text, border: `1px solid ${C.lineStrong}`, borderRadius: 8, padding: "0 10px", height: 36, fontSize: 13, fontFamily: FONT_UI };
 
   const gridStyle = isMobile
-    ? { display: "flex", flexDirection: "column", height: "auto", minHeight: "100vh" }
-    : { display: "grid", gridTemplateColumns: "220px 1fr 340px", gridTemplateRows: "44px 1fr", gridTemplateAreas: `"header header header" "sidebar main rightpanel"`, height: "100vh", overflow: "hidden" };
+    ? { display: "flex", flexDirection: "column", minHeight: "100vh" }
+    : { display: "grid", gridTemplateColumns: "320px minmax(0,1fr) 380px", gridTemplateRows: "60px minmax(0,1fr) 72px", gridTemplateAreas: `"header header header" "sidebar main rightpanel" "footer footer footer"`, height: "100vh", overflow: "hidden" };
 
-  const TOAST_BG = { info: "#1a2a3a", warning: "#2a1e00", danger: "#2a0808", success: "#082a08" };
-  const TOAST_BD = { info: "#3671C6", warning: "#FFD600", danger: "#E8002D", success: "#00D26A" };
+  const TOAST_BG = { info: C.aBg, warning: C.bBg, danger: "#2E1218", success: C.greenBg };
+  const TOAST_BD = { info: C.a, warning: C.b, danger: C.red, success: C.green };
 
   const SHORTCUTS = [
     { key: "Space", desc: lang === "fr" ? "Lecture / Pause" : "Play / Pause" },
-    { key: "←", desc: lang === "fr" ? "Tour précédent" : "Previous lap" },
-    { key: "→", desc: lang === "fr" ? "Tour suivant" : "Next lap" },
-    { key: "?", desc: lang === "fr" ? "Raccourcis clavier" : "Keyboard shortcuts" },
+    { key: "←", desc: t("prevLap") },
+    { key: "→", desc: t("nextLap") },
+    { key: "?", desc: t("shortcuts") },
     { key: "Esc", desc: lang === "fr" ? "Fermer les overlays" : "Close overlays" },
   ];
 
+  const apiLabel = apiOk === "OK" ? t("connected") : apiOk === "ERR" ? t("offline") : t("connecting");
+  const apiColor = apiOk === "OK" ? C.green : apiOk === "ERR" ? C.red : C.b;
+
+  const trackMapProps = {
+    trackX, trackY, corners, ersSegs, currentLap: curLap, driverDots, selDrv, cmpDrv,
+    onSelect: handleDriverSelect, telChart, c1, c2, selDrvObj, cmpDrvObj, hoveredIndex,
+    s1Ratio, s2Ratio, t, mapMetric, setMapMetric, currentCarData,
+  };
+
   return (
-    <div style={{ "--f": "'JetBrains Mono','SF Mono','Fira Code',monospace", background: "#0a0a0a", color: "#eee", fontFamily: "var(--f)", ...gridStyle }}>
-      <header style={{ gridArea: "header", padding: "8px 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #181818", background: "#0d0d0d", flexWrap: "wrap", zIndex: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <div style={{ width: 3, height: 22, background: "#E8002D", borderRadius: 2 }} />
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 2 }}>F1<span style={{ color: "#E8002D" }}>COCKPIT</span></div>
+    <div style={{ "--f": FONT_UI, background: C.bg, color: C.text, fontFamily: FONT_UI, fontSize: 14, ...gridStyle }}>
+      <header style={{ gridArea: "header", padding: isMobile ? "10px 12px" : "0 20px", display: "flex", alignItems: "center", gap: isMobile ? 10 : 16, borderBottom: `1px solid ${C.line}`, background: C.panel, flexWrap: isMobile ? "wrap" : "nowrap", zIndex: 10, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, width: isMobile ? "auto" : 284 }}>
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="7" fill="#E8002D" /><path d="M8 19 L13 9 H21 M10.5 14 H18" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <h1 style={{ fontSize: 17, fontWeight: 700, letterSpacing: "0.04em" }}>F1 Cockpit</h1>
         </div>
-        <div style={{ display: "flex", gap: 6, flex: 1, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => setLang(lang === "fr" ? "en" : "fr")} style={{ background: "#1a1a1a", border: "1px solid #333", color: "#ccc", padding: "4px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: "pointer" }}>{lang.toUpperCase()}</button>
-          <button onClick={() => setIsLive(!isLive)} style={{ background: isLive ? "#2a0a0a" : "#1a1a1a", border: `1px solid ${isLive ? "#E8002D" : "#333"}`, color: isLive ? "#E8002D" : "#666", padding: "4px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-            {isLive && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#E8002D", animation: "pulse 1.5s infinite" }} />}
+
+        <nav aria-label={t("session")} style={{ display: "flex", alignItems: "center", gap: 4, padding: 4, background: C.bg, border: `1px solid ${C.line}`, borderRadius: 10, minWidth: 0, order: isMobile ? 5 : 0, width: isMobile ? "100%" : "auto" }}>
+          <Picker isMobile={isMobile} label={t("season")} value={year} onChange={(e) => { setYear(+e.target.value); setSelMeet(null); setSelSess(null); }} minW={84}>
+            {[2026, 2025, 2024, 2023].map((y) => <option key={y} value={y}>{y}</option>)}
+          </Picker>
+          <span aria-hidden="true" style={{ color: "#4A515C" }}>/</span>
+          <Picker isMobile={isMobile} label={t("gp")} value={selMeet?.meeting_key || ""} onChange={(e) => { setSelMeet(meetings.find((m) => m.meeting_key === +e.target.value) || null); setSelSess(null); }} minW={150}>
+            <option value="">{t("gp")}…</option>
+            {meetings.map((m) => <option key={m.meeting_key} value={m.meeting_key}>{m.meeting_name}</option>)}
+          </Picker>
+          <span aria-hidden="true" style={{ color: "#4A515C" }}>/</span>
+          <Picker isMobile={isMobile} label={t("session")} value={selSess?.session_key || ""} onChange={(e) => setSelSess(sessions.find((s) => s.session_key === +e.target.value) || null)} minW={110}>
+            <option value="">{t("session")}…</option>
+            {sessions.map((s) => <option key={s.session_key} value={s.session_key}>{s.session_name}</option>)}
+          </Picker>
+        </nav>
+
+        <div style={{ flex: 1 }} />
+
+        {loading && <span style={{ fontSize: 13, color: C.text2 }} role="status">{lang === "fr" ? "Chargement…" : "Loading…"}</span>}
+        {!isMobile && (
+          <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, color: C.text2, fontSize: 13, whiteSpace: "nowrap" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: apiColor, animation: apiOk === "..." ? "pulse 1s infinite" : "none" }} />
+            {apiLabel}
+          </div>
+        )}
+
+        <div role="group" aria-label="Mode" style={segWrap}>
+          <button aria-pressed={!isLive} onClick={() => setIsLive(false)} style={seg(!isLive)}>{t("replay")}</button>
+          <button aria-pressed={isLive} onClick={() => setIsLive(true)} style={{ ...seg(isLive), color: isLive ? C.red : C.text2 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: isLive ? C.red : "transparent", border: `1.5px solid ${C.red}`, animation: isLive ? "pulse 1.5s infinite" : "none" }} />
             {t("live")}
           </button>
-          <select value={year} onChange={(e) => { setYear(+e.target.value); setSelMeet(null); setSelSess(null); }} style={{ ...ss, width: 68 }}>
-            {[2026, 2025, 2024, 2023].map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <select value={selMeet?.meeting_key || ""} onChange={(e) => { setSelMeet(meetings.find((m) => m.meeting_key === +e.target.value) || null); setSelSess(null); }} style={{ ...ss, minWidth: 140, maxWidth: 200 }}>
-            <option value="">Grand Prix...</option>
-            {meetings.map((m) => <option key={m.meeting_key} value={m.meeting_key}>{m.meeting_name}</option>)}
-          </select>
-          <select value={selSess?.session_key || ""} onChange={(e) => setSelSess(sessions.find((s) => s.session_key === +e.target.value) || null)} style={{ ...ss, width: 110 }}>
-            <option value="">Session...</option>
-            {sessions.map((s) => <option key={s.session_key} value={s.session_key}>{s.session_name}</option>)}
-          </select>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 7px", borderRadius: 3, background: apiOk === "OK" ? "#0a200a" : "#200a0a" }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: apiOk === "OK" ? "#0a0" : apiOk === "ERR" ? "#a00" : "#aa0", animation: apiOk === "..." ? "pulse 1s infinite" : "none" }} />
-          </div>
-          <button onClick={copyLink} title={lang === "fr" ? "Copier le lien" : "Copy link"} style={{ background: "#1a1a1a", border: "1px solid #333", color: "#888", padding: "4px 7px", borderRadius: 4, fontSize: 10, cursor: "pointer" }}>🔗</button>
-          <button onClick={() => setShowShortcuts((p) => !p)} title={lang === "fr" ? "Raccourcis clavier" : "Keyboard shortcuts"} style={{ background: showShortcuts ? "#1a1a2a" : "#1a1a1a", border: `1px solid ${showShortcuts ? "#3671C6" : "#333"}`, color: showShortcuts ? "#3671C6" : "#888", padding: "4px 7px", borderRadius: 4, fontSize: 10, cursor: "pointer", fontWeight: 700 }}>?</button>
         </div>
+
+        <div role="group" aria-label="Language" style={segWrap}>
+          {["fr", "en"].map((l) => (
+            <button key={l} aria-pressed={lang === l} onClick={() => setLang(l)} style={{ ...seg(lang === l), width: 40, justifyContent: "center", padding: 0 }}>{l.toUpperCase()}</button>
+          ))}
+        </div>
+
+        <button onClick={copyLink} style={btn()} aria-label={t("share")}>
+          <Icon name="link" />{!isMobile && t("share")}
+        </button>
+        <button onClick={() => setShowShortcuts((p) => !p)} aria-label={t("shortcuts")} title={t("shortcuts")} style={{ ...iconBtn(40, showShortcuts), fontSize: 15, fontWeight: 700 }}>?</button>
       </header>
 
-      <div style={{ gridArea: "sidebar", borderRight: isMobile ? "none" : "1px solid #131313", borderBottom: isMobile ? "1px solid #181818" : "none", maxHeight: isMobile ? "220px" : "auto", overflow: "auto", background: "#0c0c0c" }}>
+      <aside aria-label={t("ranking")} style={{ gridArea: "sidebar", borderRight: isMobile ? "none" : `1px solid ${C.line}`, borderBottom: isMobile ? `1px solid ${C.line}` : "none", maxHeight: isMobile ? 360 : "none", overflow: "auto", background: C.panel, minHeight: 0 }}>
         <Sidebar curLap={curLap} sortedDrv={sortedDrv} posAtLap={posAtLap} selDrv={selDrv} cmpDrv={cmpDrv} setSelDrv={handleDriverSelect} setCmpDrv={setCmpDrv} curLapD={curLapD} curIntv={curIntv} drvRaceData={drvRaceData} t={t} />
-      </div>
+      </aside>
 
-      <div style={{ gridArea: "main", display: "grid", gridTemplateRows: isMobile ? "auto 360px" : "1fr 400px", overflow: "hidden", minHeight: 0 }}>
-        <div style={{ position: "relative", background: "#0e0e0e", minHeight: 0, overflow: "hidden" }} onDoubleClick={() => setIsMapFullscreen(true)}>
-          <TrackMap
-            trackX={trackX} trackY={trackY} corners={corners} ersSegs={ersSegs}
-            currentLap={curLap} driverDots={driverDots} selDrv={selDrv} cmpDrv={cmpDrv}
-            onSelect={handleDriverSelect} telChart={telChart} c1={c1} c2={c2}
-            selDrvObj={selDrvObj} cmpDrvObj={cmpDrvObj} hoveredIndex={hoveredIndex}
-            s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t}
-            mapMetric={mapMetric} setMapMetric={setMapMetric}
-            currentCarData={currentCarData}
-          />
-          <div style={{ position: "absolute", bottom: 8, left: 12, right: 12, display: "flex", gap: 6 }}>
-            {maxLap > 1 && (
-              <div style={{ flex: 1, background: "#0e0e0ecc", backdropFilter: "blur(6px)", borderRadius: 6, padding: "5px 10px", display: "flex", alignItems: "center", gap: 6, border: "1px solid #1c1c1c" }}>
-                <button onClick={() => setPlay(!play)} style={{ background: play ? "#E8002D" : "#1c1c1c", color: "#fff", border: "none", borderRadius: 3, width: 26, height: 22, cursor: "pointer", fontSize: 10 }}>{play ? "⏸" : "▶"}</button>
-                <input type="range" min={1} max={maxLap} value={curLap} onChange={(e) => { setCurLap(+e.target.value); setPlay(false); }} style={{ flex: 1, accentColor: "#E8002D" }} />
-                <span style={{ fontSize: 9, color: "#555", minWidth: 44, textAlign: "right" }}>{curLap}/{maxLap}</span>
-                {curLapOvertakes > 0 && (
-                  <div title={`${curLapOvertakes} overtake${curLapOvertakes !== 1 ? "s" : ""}`} style={{ background: "#E8002D", color: "#fff", borderRadius: 10, padding: "1px 6px", fontSize: 8, fontWeight: 700, minWidth: 18, textAlign: "center" }}>
-                    +{curLapOvertakes}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        <div style={{ minHeight: 0, overflow: "hidden" }}>
+      <main style={{ gridArea: "main", display: "grid", gridTemplateRows: isMobile ? "440px auto" : "minmax(0,1fr) minmax(0,1fr)", overflow: "hidden", minHeight: 0, minWidth: 0 }}>
+        <section aria-label={t("track")} style={{ position: "relative", minHeight: 0, overflow: "hidden", borderBottom: `1px solid ${C.line}` }} onDoubleClick={() => setIsMapFullscreen(true)}>
+          <TrackMap {...trackMapProps} />
+          {trackX.length > 10 && (
+            <button onClick={() => setIsMapFullscreen(true)} aria-label={t("fullscreen")} title={t("fullscreen")} style={{ ...iconBtn(40), position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
+              <Icon name="expand" />
+            </button>
+          )}
+        </section>
+        <section aria-label={t("tel")} style={{ minHeight: 0, overflow: "hidden" }}>
           <Telemetry
             curLap={curLap} is26={is26} selDrvObj={selDrvObj} cmpDrvObj={cmpDrvObj}
             c1={c1} c2={c2} cmpDrv={cmpDrv} telStatus={telStatus} telChart={telChart}
             setHoveredIndex={setHoveredIndex} selLapData={selLapData} cmpLapData={cmpLapData}
-            s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t} lapSC={lapSC}
+            s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t} lapSC={lapSC} lang={lang}
           />
-        </div>
-      </div>
+        </section>
+      </main>
 
-      <div style={{ gridArea: "rightpanel", borderLeft: isMobile ? "none" : "1px solid #131313", height: isMobile ? "auto" : "100%", overflow: "hidden" }}>
+      <aside aria-label={lang === "fr" ? "Détails de session" : "Session details"} data-panel style={{ gridArea: "rightpanel", borderLeft: isMobile ? "none" : `1px solid ${C.line}`, height: isMobile ? 640 : "100%", overflow: "hidden", minHeight: 0 }}>
         <RightPanel
           tab={tab} setTab={setTab} filtRadios={filtRadios} rCtrl={rCtrl}
           weather={weather} curWeather={curWeather} drivers={drivers} maxLap={maxLap}
@@ -625,39 +689,82 @@ export default function App() {
           gapData={gapData} overtakesPerLap={overtakesPerLap} cornerSpeeds={cornerSpeeds}
           lapSC={lapSC} sessionKey={selSess?.session_key}
         />
-      </div>
+      </aside>
+
+      {/* Lap playback — always reachable at the bottom of the screen */}
+      <footer aria-label={lang === "fr" ? "Lecture des tours" : "Lap playback"} style={{ gridArea: "footer", display: "flex", alignItems: "center", gap: isMobile ? 10 : 16, padding: isMobile ? "10px 12px" : "0 20px", background: C.panel, borderTop: `1px solid ${C.line}`, position: isMobile ? "sticky" : "static", bottom: 0, zIndex: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {!isMobile && <button onClick={() => { setCurLap((l) => Math.max(1, l - 1)); setPlay(false); }} disabled={curLap <= 1} aria-label={t("prevLap")} title={`${t("prevLap")} (←)`} style={iconBtn(44)}><Icon name="prev" sw={1.8} /></button>}
+          <button onClick={() => setPlay(!play)} disabled={maxLap <= 1} aria-label={play ? t("pause") : t("play")} title={`${play ? t("pause") : t("play")} (Space)`} style={{ width: 52, height: 52, borderRadius: "50%", border: "none", background: C.action, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <PlayIcon playing={play} />
+          </button>
+          {!isMobile && <button onClick={() => { setCurLap((l) => Math.min(maxLap, l + 1)); setPlay(false); }} disabled={curLap >= maxLap} aria-label={t("nextLap")} title={`${t("nextLap")} (→)`} style={iconBtn(44)}><Icon name="next" sw={1.8} /></button>}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: isMobile ? 0 : 120, flexShrink: 0 }} aria-live="polite">
+          <span style={{ fontSize: 13, color: C.text2 }}>{t("lap")}</span>
+          <span className="num" style={{ fontSize: 24, fontWeight: 700 }}>{curLap}</span>
+          <span className="num" style={{ fontSize: 15, color: C.text3 }}>/ {maxLap}</span>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ position: "relative", height: 28 }}>
+            <div style={{ position: "absolute", left: 0, right: 0, top: 12, height: 4, borderRadius: 2, background: C.lineStrong }} />
+            <div style={{ position: "absolute", left: 0, width: `${lapPct(curLap)}%`, top: 12, height: 4, borderRadius: 2, background: C.red }} />
+            {scLaps.map((l) => <span key={`sc${l}`} style={{ position: "absolute", left: `${lapPct(l)}%`, width: `${Math.max(100 / Math.max(maxLap, 1), 0.8)}%`, top: 10, height: 8, borderRadius: 2, background: C.b, opacity: 0.55 }} />)}
+            {pitLapsA.map((l) => <span key={`pa${l}`} style={{ position: "absolute", left: `${lapPct(l)}%`, top: 0, width: 2, height: 9, background: C.a }} />)}
+            {pitLapsB.map((l) => <span key={`pb${l}`} style={{ position: "absolute", left: `${lapPct(l)}%`, top: 19, width: 2, height: 9, background: C.b }} />)}
+            <input
+              className="scrubber" type="range" min={1} max={Math.max(maxLap, 1)} value={curLap}
+              onChange={(e) => { setCurLap(+e.target.value); setPlay(false); }}
+              aria-label={t("lap")} aria-valuetext={`${t("lap")} ${curLap} ${t("lapOf")} ${maxLap}`}
+              style={{ position: "absolute", inset: 0 }}
+            />
+          </div>
+          {!isMobile && (
+            <div style={{ display: "flex", gap: 16, fontSize: 12, color: C.text3, whiteSpace: "nowrap", overflow: "hidden" }}>
+              {scLaps.length > 0 && <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 12, height: 8, borderRadius: 2, background: C.b, opacity: 0.55 }} />{t("sc")} / VSC</span>}
+              {pitLapsA.length > 0 && <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 2, height: 10, background: C.a }} />{t("pitA")}</span>}
+              {pitLapsB.length > 0 && <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 2, height: 10, background: C.b }} />{t("pitB")}</span>}
+              {curLapOvertakes > 0 && <span>{curLapOvertakes} {lang === "fr" ? "dépassement(s) ce tour" : `overtake${curLapOvertakes !== 1 ? "s" : ""} this lap`}</span>}
+            </div>
+          )}
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center" }}>
+          <span style={srOnly}>{t("speedX")}</span>
+          <select value={playSpeed} onChange={(e) => setPlaySpeed(+e.target.value)} style={{ ...ss, height: 40, fontWeight: 600 }}>
+            {[0.5, 1, 2, 4].map((v) => <option key={v} value={v}>{v}×</option>)}
+          </select>
+        </label>
+        {!isMobile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }} aria-hidden="true">
+            {["Space", "←", "→"].map((k) => <kbd key={k} style={{ padding: "3px 7px", border: `1px solid ${C.lineStrong}`, borderRadius: 5, color: C.text2, fontSize: 12, fontFamily: FONT_UI }}>{k}</kbd>)}
+          </div>
+        )}
+      </footer>
 
       {/* Full-screen track map overlay */}
       {isMapFullscreen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9990, background: "#0a0a0a", display: "flex", flexDirection: "column" }} onDoubleClick={() => setIsMapFullscreen(false)}>
+        <div role="dialog" aria-modal="true" aria-label={t("track")} style={{ position: "fixed", inset: 0, zIndex: 9990, background: C.bg }} onDoubleClick={() => setIsMapFullscreen(false)}>
           <div style={{ position: "absolute", inset: 0 }}>
-            <TrackMap
-              trackX={trackX} trackY={trackY} corners={corners} ersSegs={ersSegs}
-              currentLap={curLap} driverDots={driverDots} selDrv={selDrv} cmpDrv={cmpDrv}
-              onSelect={handleDriverSelect} telChart={telChart} c1={c1} c2={c2}
-              selDrvObj={selDrvObj} cmpDrvObj={cmpDrvObj} hoveredIndex={hoveredIndex}
-              s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t}
-              mapMetric={mapMetric} setMapMetric={setMapMetric}
-              currentCarData={currentCarData}
-            />
+            <TrackMap {...trackMapProps} />
           </div>
-          <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", color: "#444", fontSize: 9, fontFamily: "var(--f)", background: "#0a0a0acc", padding: "4px 10px", borderRadius: 4, border: "1px solid #1c1c1c", pointerEvents: "none" }}>
-            {lang === "fr" ? "Double-clic pour quitter" : "Double-click to exit fullscreen"}
-          </div>
+          <button onClick={() => setIsMapFullscreen(false)} style={{ ...btn(), position: "absolute", bottom: 20, right: 20 }} autoFocus>
+            <Icon name="close" />{t("exitFs")} <kbd style={{ fontSize: 12, color: C.text2, fontFamily: FONT_UI }}>Esc</kbd>
+          </button>
         </div>
       )}
 
-      {/* Toast notification overlay */}
-      <div style={{ position: "fixed", top: 56, right: 12, zIndex: 9999, display: "flex", flexDirection: "column", gap: 6, pointerEvents: "none" }}>
+      {/* Toast notifications */}
+      <div role="status" aria-live="polite" style={{ position: "fixed", top: 72, right: 16, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none" }}>
         {toasts.map((toast) => (
           <div key={toast.id} style={{
-            background: TOAST_BG[toast.type] || "#1a1a1a",
-            border: `1px solid ${TOAST_BD[toast.type] || "#444"}`,
-            color: "#eee", borderRadius: 5, padding: "7px 12px", fontSize: 10,
-            fontFamily: "var(--f)", fontWeight: 600, maxWidth: 270, lineHeight: 1.5,
-            animation: "slideInRight 0.3s ease",
-            boxShadow: `0 3px 14px ${TOAST_BD[toast.type] || "#000"}33`,
-            pointerEvents: "auto",
+            background: TOAST_BG[toast.type] || C.raised,
+            border: `1px solid ${TOAST_BD[toast.type] || C.lineStrong}`,
+            color: C.text, borderRadius: 10, padding: "10px 14px", fontSize: 14,
+            fontWeight: 600, maxWidth: 320, lineHeight: 1.45,
+            animation: "slideInRight 0.3s ease", boxShadow: "0 6px 20px #00000066", pointerEvents: "auto",
           }}>
             {toast.msg}
           </div>
@@ -666,18 +773,16 @@ export default function App() {
 
       {/* Keyboard shortcuts modal */}
       {showShortcuts && (
-        <div onClick={() => setShowShortcuts(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "#000000bb", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "#111", border: "1px solid #222", borderRadius: 8, padding: "20px 24px", minWidth: 280, maxWidth: 360 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#ccc", letterSpacing: 1 }}>
-                {lang === "fr" ? "RACCOURCIS CLAVIER" : "KEYBOARD SHORTCUTS"}
-              </span>
-              <button onClick={() => setShowShortcuts(false)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 0 }}>✕</button>
+        <div onClick={() => setShowShortcuts(false)} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "#000000bb", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div role="dialog" aria-modal="true" aria-label={t("shortcuts")} onClick={(e) => e.stopPropagation()} style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14, padding: "20px 24px", width: "100%", maxWidth: 380 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t("shortcuts")}</h2>
+              <button onClick={() => setShowShortcuts(false)} aria-label="Close" style={{ ...iconBtn(40), background: "transparent", border: "none" }} autoFocus><Icon name="close" /></button>
             </div>
             {SHORTCUTS.map((sc) => (
-              <div key={sc.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #1a1a1a" }}>
-                <span style={{ fontSize: 9, color: "#888" }}>{sc.desc}</span>
-                <kbd style={{ background: "#1a1a1a", border: "1px solid #333", borderRadius: 3, padding: "2px 8px", fontSize: 9, color: "#ccc", fontFamily: "var(--f)" }}>{sc.key}</kbd>
+              <div key={sc.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.rowLine}` }}>
+                <span style={{ fontSize: 14, color: C.text2 }}>{sc.desc}</span>
+                <kbd style={{ background: C.raised, border: `1px solid ${C.lineStrong}`, borderRadius: 6, padding: "3px 10px", fontSize: 13, color: C.text, fontFamily: FONT_UI }}>{sc.key}</kbd>
               </div>
             ))}
           </div>
