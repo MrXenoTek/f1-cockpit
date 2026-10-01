@@ -8,7 +8,7 @@ import Icon from "./Icon";
 const COMPOUND_LIFE = { SOFT: 22, MEDIUM: 35, HARD: 50, INTERMEDIATE: 40, WET: 60 };
 
 export default function RightPanel({
-  tab, setTab, filtRadios, rCtrl, weather, curWeather,
+  tab, setTab, filtRadios, rCtrl, onAnalyse, weather, curWeather,
   drivers, maxLap, rfDrv, setRfDrv, rfLap, setRfLap, ss, t, lang,
   pits, stints, selDrv, cmpDrv, laps, bestSectors, standings, curLap,
   gapData, overtakesPerLap, cornerSpeeds = [],
@@ -902,6 +902,11 @@ export default function RightPanel({
                   <div>
                     <div style={{ fontSize: 12, color: "#A9B0BB", lineHeight: 1.3 }}>{m.message}</div>
                     <div style={{ fontSize: 12, color: "#838B97" }}>{m.category} {m.lap_number ? `• T${m.lap_number}` : ""}</div>
+                    {onAnalyse && (m.flag === "YELLOW" || m.flag === "DOUBLE YELLOW") && (
+                      <button onClick={() => onAnalyse(m)} style={{ marginTop: 3, background: "transparent", border: "1px solid #5C4A12", color: "#FFB020", borderRadius: 4, padding: "2px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                        {lang === "fr" ? "Analyser la télémétrie" : "Analyse telemetry"}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
