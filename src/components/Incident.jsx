@@ -5,7 +5,7 @@ import {
 import { fetchApi, tc, exportCSV } from "../api";
 import { C, FONT_NUM, btn, iconBtn, segWrap, seg } from "../theme";
 import {
-  cleanSamples, buildProfile, medianSegLens, normalise, resample, distanceAtTime, zoneMetrics, findSlowZone,
+  cleanSamples, buildProfile, lapAnchors, medianSegLens, normalise, resample, distanceAtTime, zoneMetrics, findSlowZone,
 } from "../telemetryMath";
 import { passStatus } from "../passStatus";
 import Icon from "./Icon";
@@ -36,21 +36,6 @@ const PASS_LABEL = {
 const fmtTime = (t) => new Date(t).toLocaleTimeString("fr-FR");
 const num = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? "—" : v.toFixed(d));
 const signed = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}`);
-
-function lapWindow(driverLaps, lapNumber) {
-  const l = driverLaps.find((x) => x.lap_number === lapNumber);
-  if (!l?.date_start) return null;
-  const next = driverLaps.find((x) => x.lap_number === lapNumber + 1);
-  const t0 = new Date(l.date_start).getTime();
-  const t1 = l.lap_duration ? t0 + l.lap_duration * 1000 : next?.date_start ? new Date(next.date_start).getTime() : null;
-  if (!t1) return null;
-  const anchors = [t0];
-  if (l.duration_sector_1 && l.duration_sector_2 && l.lap_duration) {
-    anchors.push(t0 + l.duration_sector_1 * 1000, t0 + (l.duration_sector_1 + l.duration_sector_2) * 1000);
-  }
-  anchors.push(t1);
-  return { t0, t1, anchors };
-}
 
 export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmpDrv, initialEvent, onClose, lang = "fr", cacheable = false }) {
   const fr = lang === "fr";
@@ -104,7 +89,7 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
   const fetchLap = useCallback(async (dn, lapNumber) => {
     const key = `${sessionKey}-${dn}-${lapNumber}`;
     if (cache.current.has(key)) return cache.current.get(key);
-    const w = lapWindow(driverLaps(dn), lapNumber);
+    const w = lapAnchors(driverLaps(dn), lapNumber);
     if (!w) return null;
     const rows = await fetchApi("car_data", {
       session_key: sessionKey, driver_number: dn,

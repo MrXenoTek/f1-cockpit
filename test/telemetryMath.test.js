@@ -90,3 +90,35 @@ test("passStatus tells before / under / after the flag", () => {
   assert.equal(passStatus(2500, { t: 1000, tClear: null }), "yellow");
   assert.equal(passStatus(null, evt), null);
 });
+
+test("alignTelemetry compares two cars at the same place on track", () => {
+  // B is 7% slower, so by lap fraction (the old method) its corner sits at a different index
+  const A = simulate(1.0, 1e12, 5), B = simulate(0.93, 1e12 + 3000, 6);
+  const al = M.alignTelemetry([{ rows: A.samples, anchors: A.anchors }, { rows: B.samples, anchors: B.anchors }], 200);
+  assert.equal(al.series.length, 2);
+  assert.ok(Math.abs(al.fractions[0] - 0.3) < 0.01 && Math.abs(al.fractions[1] - 0.64) < 0.01, String(al.fractions));
+  const [a, b] = al.series;
+  // the corner at 2400 m: both minima must land on the same grid index (±1 point = ±25 m)
+  const argmin = (rows, lo, hi) => rows.reduce((m, r, i) => (i >= lo && i <= hi && r.speed < rows[m].speed ? i : m), lo);
+  const lo = Math.round((2100 / al.total) * 199), hi = Math.round((2700 / al.total) * 199);
+  assert.ok(Math.abs(argmin(a, lo, hi) - argmin(b, lo, hi)) <= 1);
+  // B is slower through the corner, and reaches it later (time delta grows)
+  const i = argmin(a, lo, hi);
+  assert.ok(a[i].speed - b[i].speed > 6, `delta ${a[i].speed - b[i].speed}`);
+  assert.ok(b[i].sec - a[i].sec > 0.5, `time delta ${b[i].sec - a[i].sec}`);
+});
+
+test("alignTelemetry rejects data that belongs to another lap", () => {
+  const A = simulate(1.0, 1e12, 7);
+  const wrong = A.anchors.map((t) => t + 100000); // anchors of the *next* lap, samples still of this one
+  const al = M.alignTelemetry([{ rows: A.samples, anchors: wrong }, null], 200);
+  assert.equal(al, null);
+});
+
+test("lapAnchors returns finish line + loops, or null without times", () => {
+  const laps = [{ lap_number: 3, date_start: "2026-01-01T00:00:00Z", lap_duration: 90, duration_sector_1: 30, duration_sector_2: 30, duration_sector_3: 30 }, { lap_number: 4, date_start: "2026-01-01T00:01:30Z" }];
+  const a = M.lapAnchors(laps, 3);
+  assert.deepEqual(a.anchors.map((t) => (t - a.t0) / 1000), [0, 30, 60, 90]);
+  assert.equal(M.lapAnchors(laps, 4), null);
+  assert.equal(M.lapAnchors(laps, 9), null);
+});

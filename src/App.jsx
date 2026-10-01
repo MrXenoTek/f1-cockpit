@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { tc, fetchApi, fetchJ, classifyErs, fetchStandings } from "./api";
+import { alignTelemetry, lapAnchors } from "./telemetryMath";
 import TrackMap from "./components/TrackMap";
 import Sidebar from "./components/Sidebar";
 import Telemetry from "./components/Telemetry";
@@ -480,8 +481,48 @@ export default function App() {
     return 0;
   };
 
+  // Both drivers' laps on one *distance* axis (anchored on the finish line and the timing
+  // loops), so index i means the same place on track for A and B. null → fall back to
+  // lap-fraction alignment (live lap in progress, or a lap without sector times).
+  const aligned = useMemo(() => {
+    if (!currentCarData.length) return null;
+    const mk = (dn, rows) => {
+      if (!dn || !rows?.length) return null;
+      const a = lapAnchors(laps.filter((l) => l.driver_number === dn), curLap);
+      return a ? { rows, anchors: a.anchors } : null;
+    };
+    const l1 = mk(selDrv, currentCarData);
+    if (!l1) return null;
+    const al = alignTelemetry([l1, cmpDrv ? mk(cmpDrv, cmpCarData) : null], 200);
+    return al?.series[0] ? al : null;
+  }, [currentCarData, cmpCarData, laps, selDrv, cmpDrv, curLap]);
+
   const telChart = useMemo(() => {
     if (!currentCarData.length) return [];
+    if (aligned) {
+      const [r1, r2] = aligned.series;
+      const g = (cur, prev) => {
+        const dt = cur.sec - prev.sec;
+        return dt > 0.01 ? Math.max(-5, Math.min(5, (((cur.speed - prev.speed) / 3.6) / dt) / 9.81)) : 0;
+      };
+      const res = [];
+      for (let i = 0; i < aligned.n; i++) {
+        const p1 = r1[i];
+        if (!p1 || p1.speed === null) continue;
+        const prev1 = r1[i - 1]?.speed !== null ? r1[i - 1] : null;
+        const pt = { i, d: Math.round(p1.d), speed1: p1.speed, throttle1: p1.throttle, brake1: p1.brake, gear1: p1.gear, ers1: getErsVal(p1, prev1), gLong1: prev1 ? g(p1, prev1) : 0, sec1: p1.sec };
+        const p2 = r2?.[i];
+        if (p2 && p2.speed !== null) {
+          const prev2 = r2[i - 1]?.speed !== null ? r2[i - 1] : null;
+          pt.speed2 = p2.speed; pt.throttle2 = p2.throttle; pt.brake2 = p2.brake; pt.gear2 = p2.gear;
+          pt.ers2 = getErsVal(p2, prev2); pt.gLong2 = prev2 ? g(p2, prev2) : 0; pt.sec2 = p2.sec;
+          pt.delta = pt.speed1 - pt.speed2;
+          pt.gapT = pt.sec1 - pt.sec2; // >0: A reaches this point later than B
+        }
+        res.push(pt);
+      }
+      return res;
+    }
     const d1 = currentCarData, d2 = cmpCarData || [];
     const lapData = laps.find((l) => l.driver_number === selDrv && l.lap_number === curLap);
     const dt = (lapData?.lap_duration || 90) / 199; // seconds per sample
@@ -509,12 +550,22 @@ export default function App() {
       res.push(pt);
     }
     return res;
-  }, [currentCarData, cmpCarData, is26, laps, selDrv, curLap]);
+  }, [aligned, currentCarData, cmpCarData, is26, laps, selDrv, curLap]);
 
   // Corner apex speeds — maps each corner to the minimum speed in that track zone
   const cornerSpeeds = useMemo(() => {
     if (!corners.length || !trackX.length || !currentCarData.length) return [];
-    const getApex = (data, progress) => {
+    // cumulative arc length of the track outline: a corner's share of the lap
+    // distance, instead of its point index (outline points are not evenly spaced)
+    const cum = [0];
+    for (let i = 1; i < trackX.length; i++) cum.push(cum[i - 1] + Math.hypot(trackX[i] - trackX[i - 1], trackY[i] - trackY[i - 1]));
+    const arcTotal = cum[cum.length - 1] || 1;
+    const apexAligned = (rows, frac) => {
+      const c = frac * aligned.total;
+      const v = rows.filter((r) => r.speed !== null && r.speed > 30 && Math.abs(r.d - c) <= 100).map((r) => r.speed);
+      return v.length ? Math.round(Math.min(...v)) : null;
+    };
+    const apexLegacy = (data, progress) => {
       if (!data.length) return null;
       const idx = Math.floor(progress * data.length);
       const win = Math.max(6, Math.floor(data.length * 0.03));
@@ -528,10 +579,14 @@ export default function App() {
         const d = Math.hypot(trackX[i] - cx, trackY[i] - cy);
         if (d < minDist) { minDist = d; nearestIdx = i; }
       }
+      if (aligned) {
+        const frac = cum[nearestIdx] / arcTotal;
+        return { number: corner.number, speed1: apexAligned(aligned.series[0], frac), speed2: aligned.series[1] ? apexAligned(aligned.series[1], frac) : null };
+      }
       const progress = nearestIdx / trackX.length;
-      return { number: corner.number, speed1: getApex(currentCarData, progress), speed2: cmpCarData.length ? getApex(cmpCarData, progress) : null };
+      return { number: corner.number, speed1: apexLegacy(currentCarData, progress), speed2: cmpCarData.length ? apexLegacy(cmpCarData, progress) : null };
     }).filter((c) => c.speed1 !== null);
-  }, [corners, trackX, trackY, currentCarData, cmpCarData]);
+  }, [corners, trackX, trackY, currentCarData, cmpCarData, aligned]);
 
   const selDrvObj = drivers.find((d) => d.driver_number === selDrv);
   const cmpDrvObj = drivers.find((d) => d.driver_number === cmpDrv);
@@ -543,8 +598,8 @@ export default function App() {
 
   const selLapData = laps.find((l) => l.driver_number === selDrv && l.lap_number === curLap) || {};
   const cmpLapData = cmpDrv ? laps.find((l) => l.driver_number === cmpDrv && l.lap_number === curLap) || {} : null;
-  const s1Ratio = selLapData.lap_duration ? selLapData.duration_sector_1 / selLapData.lap_duration : 0.33;
-  const s2Ratio = selLapData.lap_duration ? (selLapData.duration_sector_1 + selLapData.duration_sector_2) / selLapData.lap_duration : 0.66;
+  const s1Ratio = aligned?.fractions ? aligned.fractions[0] : selLapData.lap_duration ? selLapData.duration_sector_1 / selLapData.lap_duration : 0.33;
+  const s2Ratio = aligned?.fractions ? aligned.fractions[1] : selLapData.lap_duration ? (selLapData.duration_sector_1 + selLapData.duration_sector_2) / selLapData.lap_duration : 0.66;
 
   const copyLink = useCallback(() => {
     const params = new URLSearchParams();
