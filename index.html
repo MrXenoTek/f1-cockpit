@@ -4,15 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>F1 Cockpit — Race Analysis Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏎️</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'><rect x='1' y='1' width='26' height='26' rx='7' fill='%23E8002D'/><path d='M8 19 L13 9 H21 M10.5 14 H18' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #0a0a0a; overflow: hidden; }
-      ::-webkit-scrollbar { width: 5px; }
-      ::-webkit-scrollbar-track { background: #0a0a0a; }
-      ::-webkit-scrollbar-thumb { background: #252525; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #333; }
-      audio::-webkit-media-controls-panel { background: #1a1a1a; }
+      html, body { background: #0D0F12; color: #ECEEF1; }
+      body { overflow: hidden; -webkit-font-smoothing: antialiased; }
+      @media (max-width: 1023px) { body { overflow: auto; } }
+      button, select, input { font-family: inherit; }
+      button { cursor: pointer; }
+      button:disabled { cursor: default; opacity: 0.5; }
+      button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+        outline: 2px solid #5B9BFF; outline-offset: 2px;
+      }
+      .num { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+      /* Minimum comfortable target for buttons inside data panels */
+      [data-panel] button { min-height: 32px; }
+      [data-panel] select, [data-panel] input[type="text"], [data-panel] input[type="number"] { min-height: 36px; }
+      .row-btn:hover { background: #1C2026 !important; }
+      input[type="range"].scrubber { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; cursor: pointer; }
+      input[type="range"].scrubber::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: transparent; }
+      input[type="range"].scrubber::-moz-range-track { height: 4px; background: transparent; }
+      input[type="range"].scrubber::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: #ECEEF1; border: 3px solid #FF4D6A; }
+      input[type="range"].scrubber::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #ECEEF1; border: 3px solid #FF4D6A; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #2E343D; border-radius: 5px; border: 2px solid #15181D; }
+      ::-webkit-scrollbar-thumb:hover { background: #3A414B; }
+      audio { height: 36px; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     </style>
   </head>
   <body>

@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
 import { ERS_C } from "../api";
+import { C, FONT_UI } from "../theme";
+
+const chip = (on, col = C.a) => ({
+  height: 36, padding: "0 12px", borderRadius: 9, fontSize: 13, fontWeight: 600,
+  background: on ? C.aBg : C.raised, border: `1px solid ${on ? col : C.lineStrong}`,
+  color: on ? C.text : C.text2, display: "flex", alignItems: "center", gap: 6,
+});
 
 
 export default function TrackMap({
@@ -24,10 +31,11 @@ export default function TrackMap({
 
   if (!trackX?.length || trackX.length < 10) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#444" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 42, marginBottom: 8 }}>🏎️</div>
-          <div style={{ fontFamily: "var(--f)", fontSize: 11 }}>Select GP → Session</div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", padding: 24 }}>
+        <div style={{ textAlign: "center", maxWidth: 320 }}>
+          <svg width="56" height="40" viewBox="0 0 56 40" fill="none" aria-hidden="true" style={{ marginBottom: 12 }}><path d="M6 32h30l8-4 4-8-4-6H30l-6-6-10 2-6 8 4 6z" stroke={C.lineStrong} strokeWidth="3" strokeLinejoin="round" /></svg>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 6 }}>{t("track")}</div>
+          <div style={{ fontSize: 13, color: C.text3, lineHeight: 1.5 }}>{t("emptyStandings")}</div>
         </div>
       </div>
     );
@@ -159,42 +167,38 @@ export default function TrackMap({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      {/* Map toolbar: domination metric (VS mode) on the left, overlays on the right */}
+      <div style={{ position: "absolute", top: 12, left: 12, right: 12, zIndex: 10, display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* Metric selector in VS mode */}
+      {cmpDrv && setMapMetric && (
+        <div role="group" aria-label={t("dom")} style={{ display: "flex", gap: 2, padding: 3, alignItems: "center", background: C.bg, border: `1px solid ${C.line}`, borderRadius: 9 }}>
+          <span style={{ fontSize: 12, color: C.text3, padding: "0 8px" }}>{t("dom")}</span>
+          {["speed", "throttle", "brake"].map((m) => (
+            <button key={m} aria-pressed={mapMetric === m} onClick={() => setMapMetric(m)} style={{ height: 32, padding: "0 10px", border: "none", borderRadius: 6, background: mapMetric === m ? C.selected : "transparent", color: mapMetric === m ? C.text : C.text2, fontSize: 13, fontWeight: 600 }}>{t(m)}</button>
+          ))}
+        </div>
+      )}
+
       {/* Top-right button group */}
-      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 10, display: "flex", gap: 4, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
         {currentCarData?.length > 10 && corners?.length > 0 && (
-          <button onClick={() => setShowBrakeMarkers((p) => !p)} style={{ background: showBrakeMarkers ? "#1a0800" : "#1a1a1a", border: `1px solid ${showBrakeMarkers ? "#FF6600" : "#333"}`, color: showBrakeMarkers ? "#FF6600" : "#888", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
-            ⎔ BRAKE
+          <button onClick={() => setShowBrakeMarkers((p) => !p)} aria-pressed={showBrakeMarkers} style={chip(showBrakeMarkers, C.red)}>
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><polygon points="6,1 11,10 1,10" fill={C.red} /></svg>{t("brakeZones")}
           </button>
         )}
         {currentCarData?.length > 10 && (
-          <button onClick={() => setShowAero((p) => !p)} style={{ background: showAero ? "#001a1a" : "#1a1a1a", border: `1px solid ${showAero ? "#00E5FF" : "#333"}`, color: showAero ? "#00E5FF" : "#888", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer" }}>
-            ⚡ AERO
+          <button onClick={() => setShowAero((p) => !p)} aria-pressed={showAero} style={chip(showAero, "#00E5FF")}>
+            <span style={{ width: 14, height: 4, borderRadius: 2, background: "#00E5FF" }} />{t("activeAero")}
           </button>
         )}
         {telChart?.length > 10 && (
-          <button onClick={() => setAnimIdx(animIdx !== null ? null : 0)} style={{ background: "#1a1a1a", border: "1px solid #333", color: "#ccc", padding: "4px 8px", borderRadius: 4, fontSize: 9, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-            {animIdx !== null ? "⏹ STOP" : "🔄 REPLAY"}
+          <button onClick={() => setAnimIdx(animIdx !== null ? null : 0)} aria-pressed={animIdx !== null} style={chip(animIdx !== null)}>
+            {animIdx !== null ? t("stopLap") : t("animateLap")}
           </button>
         )}
       </div>
 
-      {/* Metric selector in VS mode */}
-      {cmpDrv && setMapMetric && (
-        <div style={{ position: "absolute", top: 10, left: 12, zIndex: 10, display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#888", fontFamily: "var(--f)", fontWeight: 600 }}>
-            🔴 {t("dom")} :
-          </span>
-          <select
-            value={mapMetric}
-            onChange={(e) => setMapMetric(e.target.value)}
-            style={{ background: "#141414", color: "#aaa", border: "1px solid #1e1e1e", borderRadius: 4, padding: "2px 4px", fontSize: 10, fontFamily: "var(--f)", outline: "none" }}
-          >
-            <option value="speed">{t("speed")}</option>
-            <option value="throttle">{t("throttle")}</option>
-            <option value="brake">{t("brake")}</option>
-          </select>
-        </div>
-      )}
+      </div>
 
       <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "100%" }}>
         <defs>
@@ -205,12 +209,12 @@ export default function TrackMap({
         </defs>
 
         {/* Track base */}
-        <path d={pathD} fill="none" stroke="#1a1a1a" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={pathD} fill="none" stroke="#262626" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={pathD} fill="none" stroke="#1C2026" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={pathD} fill="none" stroke="#2A303A" strokeWidth="13" strokeLinecap="round" strokeLinejoin="round" />
 
         {/* Colored segments (ERS or VS dominance) */}
         {el.map((l) => (
-          <line key={l.k} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={l.c} strokeWidth="5" strokeLinecap="round" opacity={0.85} filter="url(#gl)" />
+          <line key={l.k} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke={l.c} strokeWidth="6" strokeLinecap="round" opacity={0.95} filter="url(#gl)" />
         ))}
 
         {/* Active aero zones */}
@@ -221,20 +225,20 @@ export default function TrackMap({
         {/* Brake initiation markers */}
         {brakeMarkers.map((m) => (
           <g key={`brake-${m.corner}`} style={{ pointerEvents: "none" }}>
-            <polygon points={`${m.pt.x},${m.pt.y - 7} ${m.pt.x - 5},${m.pt.y + 4} ${m.pt.x + 5},${m.pt.y + 4}`} fill="#FF6600" opacity={0.9} />
+            <polygon points={`${m.pt.x},${m.pt.y - 7} ${m.pt.x - 5},${m.pt.y + 4} ${m.pt.x + 5},${m.pt.y + 4}`} fill="#FF4D6A" opacity={0.95} />
           </g>
         ))}
 
         {/* Track center line */}
-        <path d={pathD} fill="none" stroke="#3a3a3a" strokeWidth=".6" strokeDasharray="3 7" />
+        <path d={pathD} fill="none" stroke="#4A515C" strokeWidth=".6" strokeDasharray="3 7" />
 
         {/* Corner markers */}
         {corners?.map((c) => {
           const p = N(c.trackPosition.x, c.trackPosition.y);
           return (
             <g key={c.number}>
-              <circle cx={p.x} cy={p.y} r="7" fill="#151515" stroke="#333" strokeWidth=".5" />
-              <text x={p.x} y={p.y + 3} textAnchor="middle" style={{ fontSize: 7, fill: "#555", fontFamily: "var(--f)" }}>{c.number}</text>
+              <circle cx={p.x} cy={p.y} r="9" fill="#15181D" stroke="#4A515C" strokeWidth="1" />
+              <text x={p.x} y={p.y + 3.5} textAnchor="middle" style={{ fontSize: 10, fill: "#A9B0BB", fontFamily: FONT_UI, fontWeight: 600 }}>{c.number}</text>
             </g>
           );
         })}
@@ -245,9 +249,18 @@ export default function TrackMap({
           const isCmp = d.dn === cmpDrv;
           return (
             <g key={i} onClick={() => onSelect(d.dn)} style={{ cursor: "pointer", transition: animIdx !== null ? "all 0.03s linear" : "none" }}>
-              {(isSel || isCmp) && <circle cx={d.cx} cy={d.cy} r="16" fill={d.color} opacity=".15" />}
-              <circle cx={d.cx} cy={d.cy} r={isSel ? 9 : isCmp ? 7 : 5.5} fill={d.color} stroke={(isSel || isCmp) ? "#fff" : "#0a0a0a"} strokeWidth={(isSel || isCmp) ? 2 : 1} filter="url(#gl)" />
-              <text x={d.cx} y={d.cy - (isSel ? 14 : 10)} textAnchor="middle" style={{ fontSize: 10, fill: "#ccc", fontFamily: "var(--f)", fontWeight: 700 }}>{d.acr}</text>
+              <title>{d.acr}</title>
+              <circle cx={d.cx} cy={d.cy} r="14" fill="transparent" />
+              {(isSel || isCmp) && <circle cx={d.cx} cy={d.cy} r="16" fill={isSel ? C.a : C.b} opacity=".18" />}
+              <circle cx={d.cx} cy={d.cy} r={isSel ? 9 : isCmp ? 8 : 5.5} fill={isSel ? C.a : isCmp ? C.b : d.color} stroke={C.bg} strokeWidth={(isSel || isCmp) ? 3 : 1.5} />
+              {(isSel || isCmp) ? (
+                <g>
+                  <rect x={d.cx - 22} y={d.cy - 36} width="44" height="22" rx="5" fill={isSel ? C.a : C.b} />
+                  <text x={d.cx} y={d.cy - 20.5} textAnchor="middle" style={{ fontSize: 12, fill: C.bg, fontFamily: FONT_UI, fontWeight: 700 }}>{d.acr}</text>
+                </g>
+              ) : (
+                <text x={d.cx} y={d.cy - 10} textAnchor="middle" style={{ fontSize: 11, fill: "#A9B0BB", fontFamily: FONT_UI, fontWeight: 600 }}>{d.acr}</text>
+              )}
             </g>
           );
         })}
@@ -255,22 +268,22 @@ export default function TrackMap({
         {/* Sector markers: S1 */}
         {pts.length > 0 && (
           <g transform={`translate(${pts[0].x}, ${pts[0].y})`}>
-            <circle r="7" fill="#E8002D" stroke="#fff" strokeWidth="1.5" />
-            <text y="2.5" fontSize="7" fill="#fff" textAnchor="middle" fontFamily="var(--f)" fontWeight="bold">S1</text>
+            <circle r="9" fill="#D10029" stroke="#fff" strokeWidth="1.5" />
+            <text y="3.5" fontSize="9" fill="#fff" textAnchor="middle" fontFamily={FONT_UI} fontWeight="bold">S1</text>
           </g>
         )}
         {/* S2 marker */}
         {pts.length > 0 && pts[idxS1] && s1Ratio > 0 && (
           <g transform={`translate(${pts[idxS1].x}, ${pts[idxS1].y})`}>
-            <circle r="7" fill="#111" stroke="#fff" strokeWidth="1.5" />
-            <text y="2.5" fontSize="7" fill="#fff" textAnchor="middle" fontFamily="var(--f)" fontWeight="bold">S2</text>
+            <circle r="9" fill="#15181D" stroke="#fff" strokeWidth="1.5" />
+            <text y="3.5" fontSize="9" fill="#fff" textAnchor="middle" fontFamily={FONT_UI} fontWeight="bold">S2</text>
           </g>
         )}
         {/* S3 marker */}
         {pts.length > 0 && pts[idxS2] && s2Ratio > 0 && (
           <g transform={`translate(${pts[idxS2].x}, ${pts[idxS2].y})`}>
-            <circle r="7" fill="#111" stroke="#fff" strokeWidth="1.5" />
-            <text y="2.5" fontSize="7" fill="#fff" textAnchor="middle" fontFamily="var(--f)" fontWeight="bold">S3</text>
+            <circle r="9" fill="#15181D" stroke="#fff" strokeWidth="1.5" />
+            <text y="3.5" fontSize="9" fill="#fff" textAnchor="middle" fontFamily={FONT_UI} fontWeight="bold">S3</text>
           </g>
         )}
 
@@ -282,57 +295,31 @@ export default function TrackMap({
           </g>
         )}
 
-        {/* Header label */}
-        {!cmpDrv && (
-          <text x={12} y={22} style={{ fontSize: 12, fill: "#888", fontFamily: "var(--f)", fontWeight: 600 }}>
-            ⚡ {t("ers_state")}
-          </text>
-        )}
-        <text x={w - 12} y={22} textAnchor="end" style={{ fontSize: 12, fill: "#E8002D", fontFamily: "var(--f)", fontWeight: 700 }}>
-          {t("lap").toUpperCase()} {currentLap}
-        </text>
-
-        {/* Aero / brake overlay legends */}
-        {showAero && (
-          <g transform={`translate(12, ${cmpDrv ? 74 : 118})`}>
-            <line x1="0" y1="4" x2="14" y2="4" stroke="#00E5FF" strokeWidth="4" strokeLinecap="round" />
-            <text x="20" y="7" style={{ fontSize: 8, fill: "#00E5FF", fontFamily: "var(--f)", fontWeight: 700 }}>ACTIVE AERO</text>
-          </g>
-        )}
-        {showBrakeMarkers && (
-          <g transform={`translate(12, ${(cmpDrv ? 74 : 118) + (showAero ? 14 : 0)})`}>
-            <polygon points="7,0 12,9 2,9" fill="#FF6600" />
-            <text x="20" y="7" style={{ fontSize: 8, fill: "#FF6600", fontFamily: "var(--f)", fontWeight: 700 }}>BRAKE ZONES</text>
-          </g>
-        )}
-
-        {/* Legend */}
-        <g transform="translate(12, 40)">
-          {cmpDrv ? (
-            <>
-              <g transform="translate(0, 0)">
-                <circle cx="4" cy="4" r="4" fill={c1} />
-                <text x="14" y="8" style={{ fontSize: 9, fill: "#ccc", fontFamily: "var(--f)", fontWeight: 700 }}>
-                  {selDrvObj?.name_acronym} ({t("faster")})
-                </text>
-              </g>
-              <g transform="translate(0, 16)">
-                <circle cx="4" cy="4" r="4" fill={c2} />
-                <text x="14" y="8" style={{ fontSize: 9, fill: "#ccc", fontFamily: "var(--f)", fontWeight: 700 }}>
-                  {cmpDrvObj?.name_acronym} ({t("faster")})
-                </text>
-              </g>
-            </>
-          ) : (
-            ["deploy", "harvest", "clip", "superclip", "coast"].map((k, i) => (
-              <g key={k} transform={`translate(0, ${i * 14})`}>
-                <line x1="0" y1="4" x2="12" y2="4" stroke={ERS_C[k]} strokeWidth="4" strokeLinecap="round" />
-                <text x="18" y="7" style={{ fontSize: 8, fill: "#999", fontFamily: "var(--f)" }}>{t(k)}</text>
-              </g>
-            ))
-          )}
-        </g>
       </svg>
+
+      {/* Legend — HTML so it keeps its size when the map scales */}
+      <div style={{ position: "absolute", left: 12, bottom: 12, zIndex: 5, display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", background: "#0D0F12E6", border: `1px solid ${C.line}`, borderRadius: 10, fontSize: 13, color: C.text, fontFamily: FONT_UI, pointerEvents: "none" }}>
+        <div style={{ fontSize: 12, color: C.text3, fontWeight: 600 }}>
+          {cmpDrv ? `${t("dom")} · ${t(mapMetric)}` : `${t("ers_state")}${selDrvObj ? ` · ${selDrvObj.name_acronym}` : ""}`} · {t("lap")} {currentLap}
+        </div>
+        {cmpDrv ? (
+          <>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 18, height: 5, borderRadius: 3, background: c1 }} />A {selDrvObj?.name_acronym} {t("faster")}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 18, height: 5, borderRadius: 3, background: c2 }} />B {cmpDrvObj?.name_acronym} {t("faster")}</span>
+          </>
+        ) : (
+          ["deploy", "harvest", "clip", "superclip", "coast"].map((k) => (
+            <span key={k} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {k === "coast"
+                ? <span style={{ width: 18, borderTop: `3px dotted ${ERS_C[k]}` }} />
+                : <span style={{ width: 18, height: 5, borderRadius: 3, background: ERS_C[k] }} />}
+              {t(k)}
+            </span>
+          ))
+        )}
+        {showAero && <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 18, height: 5, borderRadius: 3, background: "#00E5FF" }} />{t("activeAero")}</span>}
+        {showBrakeMarkers && <span style={{ display: "flex", alignItems: "center", gap: 8 }}><svg width="18" height="10" viewBox="0 0 18 10" aria-hidden="true"><polygon points="9,0 14,10 4,10" fill="#FF4D6A" /></svg>{t("brakeZones")}</span>}
+      </div>
     </div>
   );
 }
