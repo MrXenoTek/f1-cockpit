@@ -49,8 +49,11 @@ export function cleanSamples(rows) {
   return out;
 }
 
+const EDGE_MS = 1500; // an anchor this close outside the data is bridged by holding the edge sample
+
 function sampleAt(s, t) {
-  if (t < s[0].t || t > s[s.length - 1].t) return null;
+  if (t < s[0].t) return s[0].t - t <= EDGE_MS ? { ...s[0], t } : null;
+  if (t > s[s.length - 1].t) return t - s[s.length - 1].t <= EDGE_MS ? { ...s[s.length - 1], t } : null;
   let lo = 0, hi = s.length - 1;
   while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (s[mid].t <= t) lo = mid; else hi = mid; }
   const a = s[lo], b = s[hi], u = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
@@ -64,7 +67,7 @@ function sampleAt(s, t) {
 export function buildProfile(samples, anchorTimes) {
   if (samples.length < 3 || anchorTimes.length < 2) return null;
   const cov0 = samples[0].t, cov1 = samples[samples.length - 1].t;
-  const anchors = anchorTimes.map((t) => Math.min(Math.max(t, cov0), cov1));
+  const anchors = anchorTimes.map((t) => (t < cov0 - EDGE_MS ? cov0 : t > cov1 + EDGE_MS ? cov1 : t));
   const pts = [];
   const anchorIdx = [];
   anchors.forEach((ta, k) => {
@@ -130,9 +133,9 @@ export function normalise(profile, refSegLens) {
   return { ...profile, pts, total: anchorD[anchorD.length - 1] };
 }
 
-// Resample on a fixed distance grid (default 5 m). Rows outside the measured
+// Resample on an arbitrary ascending distance grid. Rows outside the measured
 // coverage are null so a half-covered lap never shows invented data.
-export function resample(profile, total, step = 5) {
+export function resampleOn(profile, grid) {
   const src = [];
   for (const p of profile.pts) if (!src.length || p.d > src[src.length - 1].d + 0.01) src.push(p);
   if (src.length < 2) return null;
@@ -141,23 +144,72 @@ export function resample(profile, total, step = 5) {
   const fThr = makePchip(xs, src.map((p) => p.throttle));
   const fTime = makePchip(xs, src.map((p) => p.t));
   const fBrake = makePchip(xs, src.map((p) => p.brake));
-  const rows = [];
-  for (let d = 0; d <= total; d += step) {
-    if (d < xs[0] - step || d > xs[xs.length - 1] + step) { rows.push({ d, speed: null, throttle: null, brake: null, t: null, gear: null }); continue; }
-    let lo = 0;
+  const tol = grid.length > 1 ? grid[1] - grid[0] : 0;
+  let lo = 0;
+  return grid.map((d) => {
+    if (d < xs[0] - tol || d > xs[xs.length - 1] + tol) return { d, speed: null, throttle: null, brake: null, t: null, gear: null };
     while (lo < xs.length - 1 && xs[lo + 1] <= d) lo++;
-    rows.push({
+    return {
       d,
       speed: Math.max(0, fSpeed(d)),
       throttle: Math.min(100, Math.max(0, fThr(d))),
       brake: Math.min(100, Math.max(0, fBrake(d))),
       t: fTime(d),
       gear: src[lo].gear,
-    });
-  }
-  // nearest grid row of every genuinely measured sample (to draw them as dots)
-  const measured = src.map((p) => Math.round(p.d / step)).filter((i) => i >= 0 && i < rows.length);
+    };
+  });
+}
+
+// Fixed-step grid (default 5 m) + the grid index of every genuinely measured sample
+export function resample(profile, total, step = 5) {
+  const grid = [];
+  for (let d = 0; d <= total; d += step) grid.push(d);
+  const rows = resampleOn(profile, grid);
+  if (!rows) return null;
+  const measured = profile.pts.map((p) => Math.round(p.d / step)).filter((i) => i >= 0 && i < rows.length);
   return { rows, measured };
+}
+
+// Instants of the finish line and timing loops for one lap (null if the lap has no times)
+export function lapAnchors(driverLaps, lapNumber) {
+  const l = driverLaps.find((x) => x.lap_number === lapNumber);
+  if (!l?.date_start) return null;
+  const next = driverLaps.find((x) => x.lap_number === lapNumber + 1);
+  const t0 = new Date(l.date_start).getTime();
+  const t1 = l.lap_duration ? t0 + l.lap_duration * 1000 : next?.date_start ? new Date(next.date_start).getTime() : null;
+  if (!t1) return null;
+  const anchors = [t0];
+  if (l.duration_sector_1 && l.duration_sector_2 && l.lap_duration) {
+    anchors.push(t0 + l.duration_sector_1 * 1000, t0 + (l.duration_sector_1 + l.duration_sector_2) * 1000);
+  }
+  anchors.push(t1);
+  return { t0, t1, anchors };
+}
+
+// Put several laps (one per driver) on the same n-point distance axis.
+// laps: [{ rows: raw car_data rows, anchors: [t0, endS1, endS2, t1] }]  → null entries stay null.
+// Returns { n, total, fractions: [s1, s2] (0..1 of lap distance), series: [rows|null] } where
+// each row carries d, speed, throttle, brake, gear and `sec` (seconds since the lap started).
+export function alignTelemetry(laps, n = 200) {
+  // A lap whose samples do not cover its own time window (e.g. the previous lap's data still
+  // on screen while the new one loads) is rejected rather than stretched over the wrong lap.
+  const profiles = laps.map((l) => {
+    const p = l ? buildProfile(cleanSamples(l.rows), l.anchors) : null;
+    return p && p.quality.startGapMs <= 2000 && p.quality.endGapMs <= 2000 ? p : null;
+  });
+  const refLens = medianSegLens(profiles);
+  if (!refLens) return null;
+  const total = refLens.reduce((a, b) => a + b, 0);
+  const grid = Array.from({ length: n }, (_, i) => (i / (n - 1)) * total);
+  const series = profiles.map((p, k) => {
+    if (!p) return null;
+    const rows = resampleOn(normalise(p, refLens), grid);
+    if (!rows) return null;
+    const t0 = laps[k].anchors[0];
+    return rows.map((r) => ({ ...r, sec: r.t === null ? null : (r.t - t0) / 1000 }));
+  });
+  const fractions = refLens.length === 3 ? [refLens[0] / total, (refLens[0] + refLens[1]) / total] : null;
+  return { n, total, fractions, series };
 }
 
 // Where was the car (metres) at a given instant?
@@ -186,6 +238,7 @@ export function zoneMetrics(rows, z0, z1, lookback = 300) {
   const brk = before.find((r) => r.brake > 5);
   return {
     entry: zone[0].speed,
+    tEntry: zone[0].t, // instant the car reached the start of the zone (ms)
     exit: zone[zone.length - 1].speed,
     min: min.speed, minAt: min.d,
     mean: dtS > 0 ? ((z1 - z0) / dtS) * 3.6 : null,

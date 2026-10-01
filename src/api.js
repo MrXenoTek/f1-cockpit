@@ -1,3 +1,5 @@
+import { cacheGet, cacheSet } from "./cache";
+
 // ─── Team Colors ───────────────────────────────────────────────────────────────
 export const tc = (team) => {
   const teams = {
@@ -79,16 +81,22 @@ export const fmtLap = (s) => {
 // ─── OpenF1 API with retry + exponential backoff ───────────────────────────────
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export const fetchApi = async (path, params = {}, log = null, retries = 4) => {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== null && v !== undefined) {
-      q.append(k, typeof v === "object" ? JSON.stringify(v) : v);
-    }
-  });
-  const url = `https://api.openf1.org/v1/${path}?${q}`;
-  if (log) log(`GET ${path}`);
+// At most MAX_PARALLEL requests in flight: fast enough to load a session in a
+// couple of seconds, gentle enough to stay under OpenF1's rate limit.
+const MAX_PARALLEL = 3;
+let active = 0;
+const waiting = [];
+const acquire = () => new Promise((resolve) => {
+  if (active < MAX_PARALLEL) { active++; resolve(); } else waiting.push(resolve);
+});
+const release = () => {
+  const next = waiting.shift();
+  if (next) next(); else active--;
+};
 
+const inflight = new Map(); // identical concurrent requests share one fetch
+
+const networkFetch = async (url, path, log, retries) => {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url);
@@ -107,6 +115,39 @@ export const fetchApi = async (path, params = {}, log = null, retries = 4) => {
     }
   }
   return null;
+};
+
+// opts.cache = true → read/write the persistent cache. Only use it for data that can
+// no longer change (finished sessions); empty answers are never stored because the
+// API may simply not have published the data yet.
+export const fetchApi = async (path, params = {}, log = null, retries = 4, opts = {}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== null && v !== undefined) {
+      q.append(k, typeof v === "object" ? JSON.stringify(v) : v);
+    }
+  });
+  const url = `https://api.openf1.org/v1/${path}?${q}`;
+
+  if (opts.cache) {
+    const hit = await cacheGet(url);
+    if (hit) { if (log) log(`CACHE ${path}`); return hit.data; }
+  }
+  if (inflight.has(url)) return inflight.get(url);
+
+  const job = (async () => {
+    await acquire();
+    try {
+      if (log) log(`GET ${path}`);
+      const data = await networkFetch(url, path, log, retries);
+      if (opts.cache && Array.isArray(data) && data.length) cacheSet(url, data);
+      return data;
+    } finally {
+      release();
+    }
+  })();
+  inflight.set(url, job);
+  try { return await job; } finally { inflight.delete(url); }
 };
 
 // ─── Generic JSON Fetcher ───────────────────────────────────────────────────────

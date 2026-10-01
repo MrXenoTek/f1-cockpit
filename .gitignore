@@ -26,3 +26,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+# Python / FastF1 cache
+fastf1_cache/
+__pycache__/

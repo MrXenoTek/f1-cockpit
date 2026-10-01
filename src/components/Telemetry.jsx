@@ -9,7 +9,7 @@ import Icon from "./Icon";
 
 const TIP = { background: C.raised, border: `1px solid ${C.lineStrong}`, borderRadius: 8, fontSize: 13, fontFamily: FONT_NUM, padding: "6px 10px", color: C.text };
 
-function TelChart({ data, dk1, dk2, c1, c2, n1, n2, label, sub, unit, domain, onHover, onLeave, s1Limit, s2Limit, hasBrush, isDelta }) {
+function TelChart({ data, dk1, dk2, c1, c2, n1, n2, label, sub, unit, domain, onHover, onLeave, s1Limit, s2Limit, hasBrush, isDelta, dec = 0 }) {
   if (!data?.length) return null;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0,1fr)", gap: 8, alignItems: "stretch", marginBottom: 8 }}>
@@ -29,7 +29,7 @@ function TelChart({ data, dk1, dk2, c1, c2, n1, n2, label, sub, unit, domain, on
             <YAxis domain={domain || ["auto", "auto"]} hide />
             <Tooltip
               contentStyle={TIP}
-              formatter={(v) => [`${Math.round(v)}${unit || ""}`, "Delta"]}
+              formatter={(v) => [`${dec ? v.toFixed(dec) : Math.round(v)}${unit || ""}`, "Delta"]}
             />
             {s1Limit > 0 && <ReferenceLine x={s1Limit} stroke={C.lineStrong} strokeDasharray="3 3" />}
             {s2Limit > 0 && <ReferenceLine x={s2Limit} stroke={C.lineStrong} strokeDasharray="3 3" />}
@@ -204,6 +204,14 @@ export default function Telemetry({
             <TelChart
               data={telChart} dk1="delta" isDelta c1="#fff"
               label={fr ? "Delta vitesse A−B" : "Speed delta A−B"} unit=" km/h" domain={["dataMin-5", "dataMax+5"]}
+              onHover={handleHover} onLeave={handleLeave}
+              s1Limit={s1Limit} s2Limit={s2Limit}
+            />
+          )}
+          {cmpDrvObj && telChart.some((p) => p.gapT != null) && (
+            <TelChart
+              data={telChart} dk1="gapT" isDelta c1="#fff" dec={2}
+              label={fr ? "Écart de temps A−B" : "Time delta A−B"} sub={fr ? "+ : A en retard" : "+ : A behind"} unit=" s" domain={["dataMin-0.05", "dataMax+0.05"]}
               onHover={handleHover} onLeave={handleLeave}
               s1Limit={s1Limit} s2Limit={s2Limit}
             />
