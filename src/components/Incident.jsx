@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine, CartesianGrid,
 } from "recharts";
-import { fetchApi, tc } from "../api";
+import { fetchApi, tc, exportCSV } from "../api";
 import { C, FONT_NUM, btn, iconBtn, segWrap, seg } from "../theme";
 import {
   cleanSamples, buildProfile, medianSegLens, normalise, resample, distanceAtTime, zoneMetrics, findSlowZone,
 } from "../telemetryMath";
+import { passStatus } from "../passStatus";
 import Icon from "./Icon";
 
 const STEP = 5; // metres between reconstructed points
@@ -27,6 +28,11 @@ export function buildEvents(rCtrl) {
   return evts;
 }
 
+const PASS_LABEL = {
+  fr: { yellow: "sous drapeau", before: "avant le drapeau", after: "après la levée" },
+  en: { yellow: "under flag", before: "before flag", after: "after clear" },
+};
+
 const fmtTime = (t) => new Date(t).toLocaleTimeString("fr-FR");
 const num = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? "—" : v.toFixed(d));
 const signed = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(d)}`);
@@ -46,7 +52,7 @@ function lapWindow(driverLaps, lapNumber) {
   return { t0, t1, anchors };
 }
 
-export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmpDrv, initialEvent, onClose, lang = "fr" }) {
+export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmpDrv, initialEvent, onClose, lang = "fr", cacheable = false }) {
   const fr = lang === "fr";
   const events = useMemo(() => buildEvents(rCtrl), [rCtrl]);
   const [evtIdx, setEvtIdx] = useState(() => {
@@ -62,6 +68,8 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
   const [view, setView] = useState(null);
   const [drag, setDrag] = useState(null);
   const [showDots, setShowDots] = useState(true);
+  const [axis, setAxis] = useState(null); // shared segment lengths of the loaded laps
+  const [field, setField] = useState(null); // whole-field ranking
   const cache = useRef(new Map());
 
   const evt = events[evtIdx];
@@ -101,16 +109,17 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
     const rows = await fetchApi("car_data", {
       session_key: sessionKey, driver_number: dn,
       "date>": new Date(w.t0 - 2500).toISOString(), "date<": new Date(w.t1 + 2500).toISOString(),
-    });
+    }, null, 4, { cache: cacheable });
     if (!Array.isArray(rows)) return null;
     const out = { w, samples: cleanSamples(rows) };
     cache.current.set(key, out);
     return out;
-  }, [sessionKey, driverLaps]);
+  }, [sessionKey, driverLaps, cacheable]);
 
   // Fastest clean lap of the driver, used as "what he normally does here"
-  const bestLapOf = useCallback((dn, excludeLap) => {
-    const cand = driverLaps(dn).filter((l) => l.lap_duration && !l.is_pit_out_lap && l.lap_number !== excludeLap && l.lap_number > 1 && l.duration_sector_1 && l.duration_sector_2);
+  const bestLapOf = useCallback((dn, exclude) => {
+    const skip = [].concat(exclude);
+    const cand = driverLaps(dn).filter((l) => l.lap_duration && !l.is_pit_out_lap && !skip.includes(l.lap_number) && l.lap_number > 1 && l.duration_sector_1 && l.duration_sector_2);
     if (!cand.length) return null;
     return cand.reduce((a, b) => (b.lap_duration < a.lap_duration ? b : a)).lap_number;
   }, [driverLaps]);
@@ -134,6 +143,7 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
       const refLens = medianSegLens(built.flatMap((b) => [b.pInc, b.pRef]));
       if (!refLens) { setProf({}); setStatus("error"); return; }
       const total = refLens.reduce((a, b) => a + b, 0);
+      setAxis(refLens);
       const out = {};
       built.forEach((b) => {
         const nInc = b.pInc && normalise(b.pInc, refLens);
@@ -162,7 +172,7 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
 
   // new event → forget the zone; the load effect then proposes the stretch where
   // drivers slow down most compared to their own best lap
-  useEffect(() => { setZone(null); setView(null); }, [evtIdx]);
+  useEffect(() => { setZone(null); setView(null); setField(null); }, [evtIdx]);
 
   // rows for the chart: one object per grid point
   const chartRows = useMemo(() => {
@@ -188,6 +198,55 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
       return [dn, { inc, ref }];
     }));
   }, [prof, zone]);
+
+  // Rank every driver on the selected zone. For each one we try the lap the flag
+  // appeared in and the next one, and keep the pass that happened under the flag.
+  const runField = async () => {
+    if (!zone || !axis || !evt) return;
+    const todo = drivers.map((d) => d.driver_number);
+    setField({ loading: true, done: 0, total: todo.length, rows: [] });
+    const rows = [];
+    let done = 0;
+    await Promise.all(todo.map(async (dn) => {
+      try {
+        const base = defaultLap(dn);
+        if (!base) return;
+        const refLap = bestLapOf(dn, [base, base + 1]);
+        const total = axis.reduce((a, b) => a + b, 0);
+        const measure = async (lap) => {
+          const x = await fetchLap(dn, lap);
+          const p = x && buildProfile(x.samples, x.w.anchors);
+          const rs = p && resample(normalise(p, axis), total, STEP);
+          return rs && { lap, m: zoneMetrics(rs.rows, zone[0], zone[1]) };
+        };
+        const ref = refLap ? await measure(refLap) : null;
+        let pick = null;
+        for (const lap of [base, base + 1]) {
+          const r = await measure(lap);
+          if (!r?.m) continue;
+          const st = passStatus(r.m.tEntry, evt);
+          if (!pick || (st === "yellow" && pick.st !== "yellow")) pick = { ...r, st };
+          if (st === "yellow") break;
+        }
+        if (pick) {
+          const dMean = ref?.m ? pick.m.mean - ref.m.mean : null;
+          rows.push({ dn, acr: drvInfo[dn]?.acr || drivers.find((d) => d.driver_number === dn)?.name_acronym, lap: pick.lap, status: pick.st, entry: pick.m.entry, min: pick.m.min, mean: pick.m.mean, liftRel: pick.m.liftRel, dMean, dPct: dMean != null ? (dMean / ref.m.mean) * 100 : null });
+        }
+      } finally {
+        done++;
+        setField((f) => (f ? { ...f, done } : f));
+      }
+    }));
+    // under the flag first; within it, the smallest speed reduction first
+    const order = { yellow: 0, before: 1, after: 1 };
+    rows.sort((a, b) => order[a.status] - order[b.status] || (b.dPct ?? -999) - (a.dPct ?? -999));
+    setField({ loading: false, done: todo.length, total: todo.length, rows });
+  };
+
+  const fieldText = () => {
+    const head = fr ? `Zone ${Math.round(zone[0])}–${Math.round(zone[1])} m · ${evt.message}` : `Zone ${Math.round(zone[0])}–${Math.round(zone[1])} m · ${evt.message}`;
+    return [head, ...field.rows.filter((r) => r.status === "yellow").map((r, i) => `${i + 1}. ${r.acr} L${r.lap} — ${r.mean.toFixed(0)} km/h mean, min ${r.min.toFixed(0)}${r.dPct != null ? `, ${r.dPct.toFixed(1)} % vs best lap` : ""}`)].join("\n");
+  };
 
   const domain = view || [0, total || 1];
   const colorOf = (dn) => drvInfo[dn]?.color || "#fff";
@@ -342,6 +401,7 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
                 <tr>
                   <th style={{ ...head, textAlign: "left" }}>{fr ? "Pilote" : "Driver"}</th>
                   <th style={head}>{fr ? "Tour" : "Lap"}</th>
+                  <th style={head}>{fr ? "Passage zone" : "Zone pass"}</th>
                   <th style={head}>{fr ? "Drapeau vu à" : "Flag seen at"}</th>
                   <th style={head}>{fr ? "Vit. entrée" : "Entry"}</th>
                   <th style={head}>{fr ? "Vit. min" : "Min"}</th>
@@ -361,6 +421,7 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
                     <tr key={dn} style={{ borderTop: `1px solid ${C.rowLine}` }}>
                       <th scope="row" style={{ ...head, textAlign: "left", color: colorOf(dn) }}>{drvInfo[dn]?.acr}</th>
                       <td style={cell}>{p?.incLap ?? "—"}{vsBest && p?.refLap ? <span style={{ color: C.text3 }}> / ref {p.refLap}</span> : null}</td>
+                      <td style={{ ...cell, color: passStatus(m?.tEntry, evt) === "yellow" ? C.b : C.text3 }}>{PASS_LABEL[fr ? "fr" : "en"][passStatus(m?.tEntry, evt)] || "—"}</td>
                       <td style={cell}>{p?.flagD != null ? `${Math.round(p.flagD)} m` : (fr ? "hors tour" : "off lap")}</td>
                       <td style={cell}>{num(m?.entry)}</td>
                       <td style={cell}>{num(m?.min)}</td>
@@ -375,6 +436,61 @@ export default function Incident({ rCtrl, laps, drivers, sessionKey, selDrv, cmp
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* Whole-field ranking */}
+          <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <b style={{ fontSize: 14 }}>{fr ? "Tout le plateau" : "Whole field"}</b>
+              <span style={{ fontSize: 13, color: C.text3 }}>{fr ? "Qui a le moins ralenti dans la zone, parmi ceux qui l'ont passée sous le drapeau" : "Who slowed least in the zone, among those who passed it under the flag"}</span>
+              <div style={{ flex: 1 }} />
+              {field?.rows?.length > 0 && !field.loading && (
+                <>
+                  <button onClick={() => navigator.clipboard?.writeText(fieldText())} style={{ ...btn(), height: 34 }}>{fr ? "Copier" : "Copy"}</button>
+                  <button onClick={() => exportCSV(field.rows.map((r) => ({ driver: r.acr, lap: r.lap, status: r.status, entry_kmh: r.entry.toFixed(1), min_kmh: r.min.toFixed(1), mean_kmh: r.mean.toFixed(1), vs_best_lap_pct: r.dPct?.toFixed(1) ?? "" })), `incident_${Math.round(zone[0])}-${Math.round(zone[1])}m`)} style={{ ...btn(), height: 34 }}><Icon name="download" size={14} />CSV</button>
+                </>
+              )}
+              <button onClick={runField} disabled={!zone || field?.loading} style={{ ...btn(!field), height: 34 }}>
+                {field?.loading ? `${field.done}/${field.total}…` : fr ? "Classer les 20 pilotes" : "Rank all drivers"}
+              </button>
+            </div>
+            {field?.rows?.length > 0 && (
+              <div style={{ overflowX: "auto", marginTop: 8 }}>
+                <table className="num" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...head, textAlign: "left" }}>#</th>
+                      <th style={{ ...head, textAlign: "left" }}>{fr ? "Pilote" : "Driver"}</th>
+                      <th style={head}>{fr ? "Tour" : "Lap"}</th>
+                      <th style={head}>{fr ? "Passage" : "Pass"}</th>
+                      <th style={head}>{fr ? "Entrée" : "Entry"}</th>
+                      <th style={head}>{fr ? "Min" : "Min"}</th>
+                      <th style={head}>{fr ? "Moy." : "Mean"}</th>
+                      <th style={head}>{fr ? "vs meilleur tour" : "vs best lap"}</th>
+                      <th style={head}>{fr ? "Lever pied" : "Lift"}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {field.rows.map((r, i) => {
+                      const y = r.status === "yellow";
+                      return (
+                        <tr key={r.dn} style={{ borderTop: `1px solid ${C.rowLine}`, opacity: y ? 1 : 0.5 }}>
+                          <td style={{ ...cell, textAlign: "left", color: C.text3 }}>{y ? i + 1 : ""}</td>
+                          <th scope="row" style={{ ...head, textAlign: "left", color: picks.includes(r.dn) ? colorOf(r.dn) : C.text }}>{r.acr}</th>
+                          <td style={cell}>{r.lap}</td>
+                          <td style={{ ...cell, color: y ? C.b : C.text3 }}>{PASS_LABEL[fr ? "fr" : "en"][r.status]}</td>
+                          <td style={cell}>{num(r.entry)}</td>
+                          <td style={cell}>{num(r.min)}</td>
+                          <td style={{ ...cell, fontWeight: 700 }}>{num(r.mean, 1)}</td>
+                          <td style={{ ...cell, fontWeight: 700 }}>{r.dPct == null ? "—" : `${signed(r.dPct, 1)} %`}</td>
+                          <td style={cell}>{r.liftRel != null ? `${Math.round(r.liftRel)} m` : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <p style={{ fontSize: 12, color: C.text3, lineHeight: 1.5, maxWidth: 900 }}>

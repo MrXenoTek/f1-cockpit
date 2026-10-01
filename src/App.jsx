@@ -62,6 +62,9 @@ function Picker({ label, value, onChange, children, minW, isMobile }) {
 
 let toastIdCounter = 0;
 
+// Only sessions that ended over an hour ago are immutable enough to cache forever
+const isFinished = (sess) => !!sess?.date_end && Date.now() > new Date(sess.date_end).getTime() + 3600000;
+
 export default function App() {
   const [meetings, setMeetings] = useState([]);
   const [selMeet, setSelMeet] = useState(null);
@@ -206,15 +209,13 @@ export default function App() {
         const c = await fetchJ(selMeet.circuit_info_url, isInitial ? log : null);
         if (c?.x?.length > 10) { setTrackX(c.x); setTrackY(c.y); setCorners(c.corners || []); }
       }
-      const drv = await fetchApi("drivers",     { session_key: sk }, isInitial ? log : null);
-      const ld  = await fetchApi("laps",         { session_key: sk }, isInitial ? log : null);
-      const pos = await fetchApi("position",     { session_key: sk }, isInitial ? log : null);
-      const st  = await fetchApi("stints",       { session_key: sk }, isInitial ? log : null);
-      const pt  = await fetchApi("pit",          { session_key: sk }, isInitial ? log : null);
-      const iv  = await fetchApi("intervals",    { session_key: sk }, isInitial ? log : null);
-      const rad = await fetchApi("team_radio",   { session_key: sk }, isInitial ? log : null);
-      const rc  = await fetchApi("race_control", { session_key: sk }, isInitial ? log : null);
-      const wx  = await fetchApi("weather",      { session_key: sk }, isInitial ? log : null);
+      const lg = isInitial ? log : null;
+      const copts = { cache: !isLive && isFinished(selSess) };
+      const get = (path) => fetchApi(path, { session_key: sk }, lg, 4, copts);
+      const [drv, ld, pos, st, pt, iv, rad, rc, wx] = await Promise.all([
+        get("drivers"), get("laps"), get("position"), get("stints"), get("pit"),
+        get("intervals"), get("team_radio"), get("race_control"), get("weather"),
+      ]);
       if (Array.isArray(drv)) {
         const u = [...new Map(drv.map((x) => [x.driver_number, x])).values()];
         setDrivers(u);
@@ -269,7 +270,7 @@ export default function App() {
         driver_number: drv,
         "date>": startTime.toISOString(),
         "date<": endTime.toISOString(),
-      }, null);
+      }, null, 4, { cache: !isLive && isFinished(selSess) });
       if (Array.isArray(d)) {
         const sorted = d.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const unique = [];
@@ -763,7 +764,7 @@ export default function App() {
       {incident && (
         <Incident
           rCtrl={rCtrl} laps={laps} drivers={drivers} sessionKey={selSess?.session_key}
-          selDrv={selDrv} cmpDrv={cmpDrv} initialEvent={incident.evt} lang={lang}
+          selDrv={selDrv} cmpDrv={cmpDrv} initialEvent={incident.evt} lang={lang} cacheable={!isLive && isFinished(selSess)}
           onClose={() => setIncident(null)}
         />
       )}

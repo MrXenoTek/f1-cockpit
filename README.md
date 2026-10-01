@@ -14,6 +14,14 @@ Dashboard d'analyse de courses F1 avec visualisation ERS sur circuit (2026 regs)
 - **Analyse d'incident** — Pour chaque drapeau jaune / double jaune : vitesse, accélérateur et frein de plusieurs pilotes sur le même axe de *distance* (pas de fraction de tour), zone sélectionnable à la souris, comparaison au meilleur tour de chaque pilote. Les courbes sont interpolées entre des mesures à ~3,7 Hz (limite de la source) ; les points mesurés sont affichables.
 - **Support 2026** — Détection super clipping (recharge à plein gaz)
 
+## Tests
+
+```bash
+npm test   # maths de reconstruction de télémétrie (node:test, sans dépendance)
+```
+
+Les sessions terminées sont mises en cache dans IndexedDB (rechargement instantané) ; les appels OpenF1 sont limités à 3 en parallèle.
+
 ## Lancement
 
 ```bash

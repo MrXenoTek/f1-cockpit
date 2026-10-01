@@ -186,6 +186,7 @@ export function zoneMetrics(rows, z0, z1, lookback = 300) {
   const brk = before.find((r) => r.brake > 5);
   return {
     entry: zone[0].speed,
+    tEntry: zone[0].t, // instant the car reached the start of the zone (ms)
     exit: zone[zone.length - 1].speed,
     min: min.speed, minAt: min.d,
     mean: dtS > 0 ? ((z1 - z0) / dtS) * 3.6 : null,
