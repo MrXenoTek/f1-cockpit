@@ -65,7 +65,7 @@ function TelChart({ data, dk1, dk2, c1, c2, n1, n2, label, sub, unit, domain, on
 export default function Telemetry({
   curLap, is26, selDrvObj, cmpDrvObj, c1, c2, cmpDrv,
   telStatus, telChart, setHoveredIndex,
-  selLapData, cmpLapData, s1Ratio, s2Ratio, t, lapSC, lang = "fr",
+  selLapData, cmpLapData, s1Ratio, s2Ratio, t, lapSC, lang = "fr", onOpenIncident,
 }) {
   const fr = lang === "fr";
   const n1 = selDrvObj?.name_acronym, n2 = cmpDrvObj?.name_acronym;
@@ -136,6 +136,11 @@ export default function Telemetry({
           return <span className="num" style={{ fontSize: 13, padding: "3px 8px", borderRadius: 6, background: d <= 0 ? C.greenBg : "#2E1218", color: d <= 0 ? C.green : C.red }}>A {d > 0 ? "+" : "−"}{Math.abs(d).toFixed(3)} s</span>;
         })()}
         <div style={{ flex: 1 }} />
+        {onOpenIncident && (
+          <button onClick={onOpenIncident} style={{ height: 34, padding: "0 12px", background: "transparent", border: `1px solid ${C.b}`, borderRadius: 8, color: C.b, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="flag" size={14} />{fr ? "Analyse d'incident" : "Incident analysis"}
+          </button>
+        )}
         {telChart?.length > 0 && (
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={() => exportCSV(telChart, `telemetry_lap${curLap}_${n1}`)} style={{ height: 34, padding: "0 12px", background: "transparent", border: `1px solid ${C.lineStrong}`, borderRadius: 8, color: C.text2, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><Icon name="download" size={14} />CSV</button>

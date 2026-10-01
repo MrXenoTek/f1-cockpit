@@ -4,6 +4,7 @@ import TrackMap from "./components/TrackMap";
 import Sidebar from "./components/Sidebar";
 import Telemetry from "./components/Telemetry";
 import RightPanel from "./components/RightPanel";
+import Incident from "./components/Incident";
 import Icon, { PlayIcon } from "./components/Icon";
 import { C, FONT_UI, iconBtn, btn, segWrap, seg } from "./theme";
 
@@ -103,6 +104,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
+  const [incident, setIncident] = useState(null); // null = closed, {} = open, {evt} = open on that flag
   const prevRCtrlLen = useRef(0);
   const t = (k) => DICT[lang][k] || k;
 
@@ -675,6 +677,7 @@ export default function App() {
             c1={c1} c2={c2} cmpDrv={cmpDrv} telStatus={telStatus} telChart={telChart}
             setHoveredIndex={setHoveredIndex} selLapData={selLapData} cmpLapData={cmpLapData}
             s1Ratio={s1Ratio} s2Ratio={s2Ratio} t={t} lapSC={lapSC} lang={lang}
+            onOpenIncident={() => setIncident({})}
           />
         </section>
       </main>
@@ -688,6 +691,7 @@ export default function App() {
           laps={laps} bestSectors={bestSectors} standings={standings} curLap={curLap}
           gapData={gapData} overtakesPerLap={overtakesPerLap} cornerSpeeds={cornerSpeeds}
           lapSC={lapSC} sessionKey={selSess?.session_key}
+          onAnalyse={(evt) => setIncident({ evt })}
         />
       </aside>
 
@@ -754,6 +758,14 @@ export default function App() {
             <Icon name="close" />{t("exitFs")} <kbd style={{ fontSize: 12, color: C.text2, fontFamily: FONT_UI }}>Esc</kbd>
           </button>
         </div>
+      )}
+
+      {incident && (
+        <Incident
+          rCtrl={rCtrl} laps={laps} drivers={drivers} sessionKey={selSess?.session_key}
+          selDrv={selDrv} cmpDrv={cmpDrv} initialEvent={incident.evt} lang={lang}
+          onClose={() => setIncident(null)}
+        />
       )}
 
       {/* Toast notifications */}
