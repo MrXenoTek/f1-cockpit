@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { tc, fetchApi, fetchJ, classifyErs, fetchStandings } from "./api";
-import { alignTelemetry, lapAnchors } from "./telemetryMath";
+import { tc, fetchApi, classifyErs, fetchStandings, apiIssue, resetApiIssue, loadCircuitInfo, circuitInfoUrl } from "./api";
+import { alignTelemetry, lapAnchors, outlineFromLocation } from "./telemetryMath";
+import { meetingLabel, sessionLabel, findAlternatives } from "./meetings";
 import TrackMap from "./components/TrackMap";
 import Sidebar from "./components/Sidebar";
 import Telemetry from "./components/Telemetry";
 import RightPanel from "./components/RightPanel";
 import Incident from "./components/Incident";
+import DataNotice from "./components/DataNotice";
 import Icon, { PlayIcon } from "./components/Icon";
 import { C, FONT_UI, iconBtn, btn, segWrap, seg } from "./theme";
 
@@ -108,6 +110,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
+  const [dataIssue, setDataIssue] = useState(null); // {status} when the selected session came back empty
   const [incident, setIncident] = useState(null); // null = closed, {} = open, {evt} = open on that flag
   const prevRCtrlLen = useRef(0);
   const t = (k) => DICT[lang][k] || k;
@@ -204,12 +207,9 @@ export default function App() {
       setRadios([]); setRCtrl([]); setWeather([]);
       setSelDrv(null); setCmpDrv(null); setCurLap(1); setTelStatus("idle"); setHoveredIndex(null);
       prevRCtrlLen.current = 0;
+      setDataIssue(null); resetApiIssue();
     }
     try {
-      if (isInitial && selMeet?.circuit_info_url) {
-        const c = await fetchJ(selMeet.circuit_info_url, isInitial ? log : null);
-        if (c?.x?.length > 10) { setTrackX(c.x); setTrackY(c.y); setCorners(c.corners || []); }
-      }
       const lg = isInitial ? log : null;
       const copts = { cache: !isLive && isFinished(selSess) };
       const get = (path) => fetchApi(path, { session_key: sk }, lg, 4, copts);
@@ -217,6 +217,26 @@ export default function App() {
         get("drivers"), get("laps"), get("position"), get("stints"), get("pit"),
         get("intervals"), get("team_radio"), get("race_control"), get("weather"),
       ]);
+      if (isInitial) {
+        const noData = !(Array.isArray(drv) && drv.length) && !(Array.isArray(ld) && ld.length);
+        setDataIssue(noData ? { status: apiIssue.status } : null);
+        let trackOk = false;
+        const circuitUrl = noData ? null : circuitInfoUrl(selMeet);
+        if (circuitUrl) {
+          const c = await loadCircuitInfo(circuitUrl, lg);
+          if (c) { setTrackX(c.info.x); setTrackY(c.info.y); setCorners(c.info.corners || []); trackOk = true; }
+        }
+        // no layout for this circuit/year: draw it from one lap of GPS positions
+        if (!noData && !trackOk && Array.isArray(ld)) {
+          const best = ld.filter((l) => l.lap_duration && l.date_start && l.lap_number > 1 && !l.is_pit_out_lap).sort((a, b) => a.lap_duration - b.lap_duration)[0];
+          if (best) {
+            const t0 = new Date(best.date_start).getTime();
+            const loc = await fetchApi("location", { session_key: sk, driver_number: best.driver_number, "date>": new Date(t0).toISOString(), "date<": new Date(t0 + best.lap_duration * 1000).toISOString() }, lg, 4, copts);
+            const o = outlineFromLocation(loc);
+            if (o) { setTrackX(o.x); setTrackY(o.y); setCorners([]); }
+          }
+        }
+      }
       if (Array.isArray(drv)) {
         const u = [...new Map(drv.map((x) => [x.driver_number, x])).values()];
         setDrivers(u);
@@ -675,12 +695,12 @@ export default function App() {
           <span aria-hidden="true" style={{ color: "#4A515C" }}>/</span>
           <Picker isMobile={isMobile} label={t("gp")} value={selMeet?.meeting_key || ""} onChange={(e) => { setSelMeet(meetings.find((m) => m.meeting_key === +e.target.value) || null); setSelSess(null); }} minW={150}>
             <option value="">{t("gp")}…</option>
-            {meetings.map((m) => <option key={m.meeting_key} value={m.meeting_key}>{m.meeting_name}</option>)}
+            {meetings.map((m) => <option key={m.meeting_key} value={m.meeting_key}>{meetingLabel(m, lang)}</option>)}
           </Picker>
           <span aria-hidden="true" style={{ color: "#4A515C" }}>/</span>
           <Picker isMobile={isMobile} label={t("session")} value={selSess?.session_key || ""} onChange={(e) => setSelSess(sessions.find((s) => s.session_key === +e.target.value) || null)} minW={110}>
             <option value="">{t("session")}…</option>
-            {sessions.map((s) => <option key={s.session_key} value={s.session_key}>{s.session_name}</option>)}
+            {sessions.map((s) => <option key={s.session_key} value={s.session_key}>{sessionLabel(s, lang)}</option>)}
           </Picker>
         </nav>
 
@@ -721,6 +741,13 @@ export default function App() {
       <main style={{ gridArea: "main", display: "grid", gridTemplateRows: isMobile ? "440px auto" : "minmax(0,1fr) minmax(0,1fr)", overflow: "hidden", minHeight: 0, minWidth: 0 }}>
         <section aria-label={t("track")} style={{ position: "relative", minHeight: 0, overflow: "hidden", borderBottom: `1px solid ${C.line}` }} onDoubleClick={() => setIsMapFullscreen(true)}>
           <TrackMap {...trackMapProps} />
+          {dataIssue && selMeet && (
+            <DataNotice
+              status={dataIssue.status} lang={lang} onClose={() => setDataIssue(null)}
+              alternatives={findAlternatives(selMeet, meetings)}
+              onPick={(m) => { setSelMeet(m); setSelSess(null); setDataIssue(null); }}
+            />
+          )}
           {trackX.length > 10 && (
             <button onClick={() => setIsMapFullscreen(true)} aria-label={t("fullscreen")} title={t("fullscreen")} style={{ ...iconBtn(40), position: "absolute", bottom: 12, right: 12, zIndex: 10 }}>
               <Icon name="expand" />
