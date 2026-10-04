@@ -163,7 +163,10 @@ export const fetchJ = async (url, log = null) => {
   try {
     if (log) log(`GET ${url}`);
     const res = await fetch(url);
-    return res.json();
+    if (!res.ok) return null;
+    // `await` matters: a bare `return res.json()` lets a parse error (e.g. a plain-text
+    // "Not Found" body) escape this try/catch and crash the caller
+    return await res.json();
   } catch (err) {
     if (log) log(`ERR fetchJ: ${err.message}`);
     return null;
@@ -183,24 +186,32 @@ export const circuitInfoUrl = (meet) => {
 };
 
 const LAYOUT_TTL = 7 * 24 * 3600 * 1000; // a fallback layout is re-checked weekly in case the real one is published
+const MISS_TTL = 24 * 3600 * 1000;        // "no layout at all" is re-checked daily
 
 export const loadCircuitInfo = async (url, log = null) => {
-  const ok = (c) => Array.isArray(c?.x) && c.x.length > 10;
-  const key = `circuit:${url}`;
-  const hit = await cacheGet(key);
-  // remembered layout → no probing, and no 404 noise in the console
-  if (hit && ok(hit.data?.info) && (hit.data.year == null || Date.now() - hit.at < LAYOUT_TTL)) return hit.data;
+  try {
+    const ok = (c) => Array.isArray(c?.x) && c.x.length > 10;
+    const key = `circuit:${url}`;
+    const hit = await cacheGet(key);
+    // remembered answer → no probing, and no 404 noise in the console
+    if (hit?.data?.miss && Date.now() - hit.at < MISS_TTL) return null;
+    if (hit && ok(hit.data?.info) && (hit.data.year == null || Date.now() - hit.at < LAYOUT_TTL)) return hit.data;
 
-  const done = (res) => { cacheSet(key, res); return res; };
-  const first = await fetchJ(url, log);
-  if (ok(first)) return done({ info: first, year: null });
-  const m = url.match(/^(.*\/circuits\/\d+\/)(\d{4})(.*)$/);
-  if (!m) return null;
-  // older years in parallel (different host from OpenF1, so no rate-limit concern); newest hit wins
-  const years = Array.from({ length: 12 }, (_, i) => +m[2] - 1 - i);
-  const found = await Promise.all(years.map((y) => fetchJ(`${m[1]}${y}${m[3]}`, null)));
-  const i = found.findIndex(ok);
-  return i < 0 ? null : done({ info: found[i], year: years[i] });
+    const done = (res) => { cacheSet(key, res); return res; };
+    const first = await fetchJ(url, log);
+    if (ok(first)) return done({ info: first, year: null });
+    const m = url.match(/^(.*\/circuits\/\d+\/)(\d{4})(.*)$/);
+    if (!m) return null;
+    // older years in parallel (different host from OpenF1, so no rate-limit concern); newest hit wins
+    const years = Array.from({ length: 12 }, (_, i) => +m[2] - 1 - i);
+    const found = await Promise.all(years.map((y) => fetchJ(`${m[1]}${y}${m[3]}`, null)));
+    const i = found.findIndex(ok);
+    if (i < 0) { cacheSet(key, { miss: true }); return null; }
+    return done({ info: found[i], year: years[i] });
+  } catch (err) {
+    if (log) log(`ERR circuit: ${err.message}`);
+    return null; // a missing map must never stop a session from loading
+  }
 };
 
 // ─── Jolpi / Ergast Championship Standings ──────────────────────────────────────

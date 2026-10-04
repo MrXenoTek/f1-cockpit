@@ -33,3 +33,23 @@ test("circuitInfoUrl prefers circuit_key over a stale URL of another venue", () 
   assert.equal(circuitInfoUrl({ circuit_key: 12, year: 2026, circuit_info_url: "https://api.multiviewer.app/api/v1/circuits/12/2026" }), "https://api.multiviewer.app/api/v1/circuits/12/2026");
   assert.equal(circuitInfoUrl({ circuit_info_url: "https://x/circuits/5/2026" }), "https://x/circuits/5/2026");
 });
+
+// Regression: MultiViewer answers a missing layout with a plain-text 404. That used to
+// reject out of fetchJ and silently abort the whole session load (blank app).
+test("a plain-text 404 neither throws nor blocks the circuit fallback", async () => {
+  globalThis.fetch = async (url) => {
+    const year = +url.match(/\/(\d{4})$/)[1];
+    return year === 2017
+      ? { ok: true, json: async () => ring }
+      : { ok: false, status: 404, json: async () => { throw new SyntaxError("Unexpected token N in JSON"); } };
+  };
+  const { fetchJ } = await import("../src/api.js");
+  assert.equal(await fetchJ("https://api.multiviewer.app/api/v1/circuits/12/2026"), null);
+  const res = await loadCircuitInfo("https://api.multiviewer.app/api/v1/circuits/12/2026");
+  assert.equal(res.year, 2017);
+});
+
+test("loadCircuitInfo never throws, even if fetch itself blows up", async () => {
+  globalThis.fetch = async () => { throw new TypeError("Failed to fetch"); };
+  assert.equal(await loadCircuitInfo("https://api.multiviewer.app/api/v1/circuits/12/2026"), null);
+});

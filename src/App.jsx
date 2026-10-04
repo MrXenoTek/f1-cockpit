@@ -220,21 +220,26 @@ export default function App() {
       if (isInitial) {
         const noData = !(Array.isArray(drv) && drv.length) && !(Array.isArray(ld) && ld.length);
         setDataIssue(noData ? { status: apiIssue.status } : null);
-        let trackOk = false;
-        const circuitUrl = noData ? null : circuitInfoUrl(selMeet);
-        if (circuitUrl) {
-          const c = await loadCircuitInfo(circuitUrl, lg);
-          if (c) { setTrackX(c.info.x); setTrackY(c.info.y); setCorners(c.info.corners || []); trackOk = true; }
-        }
-        // no layout for this circuit/year: draw it from one lap of GPS positions
-        if (!noData && !trackOk && Array.isArray(ld)) {
-          const best = ld.filter((l) => l.lap_duration && l.date_start && l.lap_number > 1 && !l.is_pit_out_lap).sort((a, b) => a.lap_duration - b.lap_duration)[0];
-          if (best) {
-            const t0 = new Date(best.date_start).getTime();
-            const loc = await fetchApi("location", { session_key: sk, driver_number: best.driver_number, "date>": new Date(t0).toISOString(), "date<": new Date(t0 + best.lap_duration * 1000).toISOString() }, lg, 4, copts);
-            const o = outlineFromLocation(loc);
-            if (o) { setTrackX(o.x); setTrackY(o.y); setCorners([]); }
+        // The track map is best effort: whatever goes wrong here, drivers and laps still load.
+        try {
+          let trackOk = false;
+          const circuitUrl = noData ? null : circuitInfoUrl(selMeet);
+          if (circuitUrl) {
+            const c = await loadCircuitInfo(circuitUrl, lg);
+            if (c) { setTrackX(c.info.x); setTrackY(c.info.y); setCorners(c.info.corners || []); trackOk = true; }
           }
+          // no layout for this circuit/year: draw it from one lap of GPS positions
+          if (!noData && !trackOk && Array.isArray(ld)) {
+            const best = ld.filter((l) => l.lap_duration && l.date_start && l.lap_number > 1 && !l.is_pit_out_lap).sort((a, b) => a.lap_duration - b.lap_duration)[0];
+            if (best) {
+              const t0 = new Date(best.date_start).getTime();
+              const loc = await fetchApi("location", { session_key: sk, driver_number: best.driver_number, "date>": new Date(t0).toISOString(), "date<": new Date(t0 + best.lap_duration * 1000).toISOString() }, lg, 4, copts);
+              const o = outlineFromLocation(loc);
+              if (o) { setTrackX(o.x); setTrackY(o.y); setCorners([]); }
+            }
+          }
+        } catch (err) {
+          console.error("track map unavailable:", err);
         }
       }
       if (Array.isArray(drv)) {
@@ -262,7 +267,8 @@ export default function App() {
       if (Array.isArray(wx)) setWeather(wx.sort((a, b) => new Date(a.date) - new Date(b.date)));
       if (isInitial) { setSessionReady(true); setLoading(false); }
     } catch (err) {
-      if (isInitial) setLoading(false);
+      console.error("session load failed:", err);
+      if (isInitial) { setLoading(false); setDataIssue({ status: "error", message: String(err?.message || err) }); }
     }
   }, [selSess, selMeet, isLive, log]);
 
@@ -743,7 +749,7 @@ export default function App() {
           <TrackMap {...trackMapProps} />
           {dataIssue && selMeet && (
             <DataNotice
-              status={dataIssue.status} lang={lang} onClose={() => setDataIssue(null)}
+              status={dataIssue.status} message={dataIssue.message} lang={lang} onClose={() => setDataIssue(null)}
               alternatives={findAlternatives(selMeet, meetings)}
               onPick={(m) => { setSelMeet(m); setSelSess(null); setDataIssue(null); }}
             />

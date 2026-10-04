@@ -4,10 +4,13 @@ import Icon from "./Icon";
 import { meetingLabel } from "../meetings";
 
 // Shown when a selected session returns nothing, so an empty screen always has an explanation.
-export default function DataNotice({ status, alternatives, onPick, onClose, lang = "fr" }) {
+export default function DataNotice({ status, message, alternatives, onPick, onClose, lang = "fr" }) {
   const fr = lang === "fr";
   let title, body;
-  if (status === 401 || status === 403) {
+  if (status === "error") {
+    title = fr ? "Erreur pendant le chargement" : "Error while loading";
+    body = fr ? `Le chargement de la session a échoué : ${message}. Détails dans la console du navigateur.` : `Loading the session failed: ${message}. Details are in the browser console.`;
+  } else if (status === 401 || status === 403) {
     title = fr ? "OpenF1 refuse l'accès" : "OpenF1 refused access";
     body = fr
       ? `Erreur HTTP ${status}. Pendant une session en direct, OpenF1 réserve ses données aux comptes authentifiés ; elles redeviennent publiques peu après la fin de la session. Réessayez plus tard.`
