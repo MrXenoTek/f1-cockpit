@@ -94,6 +94,12 @@ const release = () => {
   if (next) next(); else active--;
 };
 
+// Why did the last failing request fail? 404 is not an issue: OpenF1 answers 404
+// ("No results found") when a query is simply empty. status 0 = network error.
+export const apiIssue = { status: null, path: null };
+export const resetApiIssue = () => { apiIssue.status = null; apiIssue.path = null; };
+const noteIssue = (status, path) => { apiIssue.status = status; apiIssue.path = path; };
+
 const inflight = new Map(); // identical concurrent requests share one fetch
 
 const networkFetch = async (url, path, log, retries) => {
@@ -104,13 +110,15 @@ const networkFetch = async (url, path, log, retries) => {
         const wait = 1500 * Math.pow(2, attempt); // 1.5s → 3s → 6s → 12s
         if (log) log(`429 ${path} → retry in ${wait}ms`);
         if (attempt < retries) { await sleep(wait); continue; }
+        noteIssue(429, path);
         return null;
       }
-      if (!res.ok) return null;
+      if (!res.ok) { if (res.status !== 404) noteIssue(res.status, path); return null; }
       return await res.json();
     } catch (err) {
       if (attempt < retries) { await sleep(1000 * (attempt + 1)); continue; }
       if (log) log(`ERR ${path}: ${err.message}`);
+      noteIssue(0, path);
       return null;
     }
   }
@@ -160,6 +168,31 @@ export const fetchJ = async (url, log = null) => {
     if (log) log(`ERR fetchJ: ${err.message}`);
     return null;
   }
+};
+
+// ─── Circuit layout (MultiViewer) ───────────────────────────────────────────────
+// The layout is keyed by circuit id *and year*. A relocated or brand-new venue may
+// have no layout for the current year, so older years of the same circuit are tried.
+export const circuitInfoUrl = (meet) => {
+  const built = meet?.circuit_key ? `https://api.multiviewer.app/api/v1/circuits/${meet.circuit_key}/${meet.year || new Date(meet.date_start).getFullYear()}` : null;
+  const url = meet?.circuit_info_url;
+  if (!url) return built;
+  // a stale URL still pointing at the original venue must not win over circuit_key
+  const id = url.match(/\/circuits\/(\d+)\//)?.[1];
+  return built && id && String(meet.circuit_key) !== id ? built : url;
+};
+
+export const loadCircuitInfo = async (url, log = null) => {
+  const ok = (c) => Array.isArray(c?.x) && c.x.length > 10;
+  const first = await fetchJ(url, log);
+  if (ok(first)) return { info: first, year: null };
+  const m = url.match(/^(.*\/circuits\/\d+\/)(\d{4})(.*)$/);
+  if (!m) return null;
+  // older years in parallel (different host from OpenF1, so no rate-limit concern); newest hit wins
+  const years = Array.from({ length: 12 }, (_, i) => +m[2] - 1 - i);
+  const found = await Promise.all(years.map((y) => fetchJ(`${m[1]}${y}${m[3]}`, null)));
+  const i = found.findIndex(ok);
+  return i < 0 ? null : { info: found[i], year: years[i] };
 };
 
 // ─── Jolpi / Ergast Championship Standings ──────────────────────────────────────

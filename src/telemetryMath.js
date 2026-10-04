@@ -271,3 +271,17 @@ export function findSlowZone(pairs, windowM = 300, step = 5) {
 }
 
 export { rowAt };
+
+// Circuit outline from one lap of GPS positions (OpenF1 `location`), used when no
+// layout exists for a circuit/year (new or relocated races). Evenly thinned to
+// `maxPts` points; returns null if the car barely moved.
+export function outlineFromLocation(rows, maxPts = 400) {
+  const pts = (rows || [])
+    .filter((r) => Number.isFinite(r.x) && Number.isFinite(r.y) && !(r.x === 0 && r.y === 0))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const moving = pts.filter((p, i) => i === 0 || Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) > 0.5);
+  if (moving.length < 50) return null;
+  const step = Math.max(1, Math.floor(moving.length / maxPts));
+  const keep = moving.filter((_, i) => i % step === 0);
+  return { x: keep.map((p) => p.x), y: keep.map((p) => p.y) };
+}
