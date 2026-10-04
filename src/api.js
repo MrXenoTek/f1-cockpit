@@ -1,4 +1,4 @@
-import { cacheGet, cacheSet } from "./cache";
+import { cacheGet, cacheSet } from "./cache.js";
 
 // ─── Team Colors ───────────────────────────────────────────────────────────────
 export const tc = (team) => {
@@ -182,17 +182,25 @@ export const circuitInfoUrl = (meet) => {
   return built && id && String(meet.circuit_key) !== id ? built : url;
 };
 
+const LAYOUT_TTL = 7 * 24 * 3600 * 1000; // a fallback layout is re-checked weekly in case the real one is published
+
 export const loadCircuitInfo = async (url, log = null) => {
   const ok = (c) => Array.isArray(c?.x) && c.x.length > 10;
+  const key = `circuit:${url}`;
+  const hit = await cacheGet(key);
+  // remembered layout → no probing, and no 404 noise in the console
+  if (hit && ok(hit.data?.info) && (hit.data.year == null || Date.now() - hit.at < LAYOUT_TTL)) return hit.data;
+
+  const done = (res) => { cacheSet(key, res); return res; };
   const first = await fetchJ(url, log);
-  if (ok(first)) return { info: first, year: null };
+  if (ok(first)) return done({ info: first, year: null });
   const m = url.match(/^(.*\/circuits\/\d+\/)(\d{4})(.*)$/);
   if (!m) return null;
   // older years in parallel (different host from OpenF1, so no rate-limit concern); newest hit wins
   const years = Array.from({ length: 12 }, (_, i) => +m[2] - 1 - i);
   const found = await Promise.all(years.map((y) => fetchJ(`${m[1]}${y}${m[3]}`, null)));
   const i = found.findIndex(ok);
-  return i < 0 ? null : { info: found[i], year: years[i] };
+  return i < 0 ? null : done({ info: found[i], year: years[i] });
 };
 
 // ─── Jolpi / Ergast Championship Standings ──────────────────────────────────────
